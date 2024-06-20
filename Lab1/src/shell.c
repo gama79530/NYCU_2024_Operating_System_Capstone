@@ -8,6 +8,7 @@ static char buffer[BUFFER_MAX_SIZE] = {0};
 static int err_code;
 static char tokens[TOKEN_NUM_MAX][TOKEN_MAX_LEN] = {0};
 static int token_num;
+static int exit = 0;
 
 void read_command();
 void parse_command();
@@ -22,12 +23,12 @@ void command_reboot();
 void accept_command(){
     uart_puts("# ");
     read_command();
-    uart_puts("\r\n");
+    uart_puts("\n");
 
     parse_command();
 
     execute_command();
-    uart_puts("\r\n");
+    uart_puts("\n");
 }
 
 void read_command(){
@@ -80,9 +81,9 @@ void execute_command(){
     if(err_code){
         uart_puts("Parsing error: ");
         uart_puts(buffer);
-        uart_puts("\r\n");
+        uart_puts("\n");
     }else if(token_num == 0){
-        uart_puts("No command.\r\n");
+        uart_puts("No command.\n");
     }else{
         if(!strncmp(tokens[0], "help", TOKEN_MAX_LEN)){
             command_help();
@@ -93,25 +94,27 @@ void execute_command(){
         }else if(!strncmp(tokens[0], "reboot", TOKEN_MAX_LEN)){
             command_reboot();
         }else{
-            uart_puts("Unsupported command.\r\n");
+            uart_puts("Unsupported command.\n");
         }
     }
     
 }
 
 void command_help(){
-    uart_puts("The basic format of command is \"{Command} [options...]\". Each token has limited length 31.\r\n");
-    uart_puts("Command with suffix \"*\" indicates that it has optional arguments.\r\n");
-    uart_puts("You can use \"{Command} --help\" to find more details.\r\n");
-    uart_puts("\r\n");
-    uart_puts("help\t: display the help menu.\r\n");
-    uart_puts("hello\t: print \"Hello World!\"\r\n");
-    uart_puts("mailbox*: communicate with VideoCoreIV GPU.\r\n");
-    uart_puts("reboot\t: reboot system\r\n");
+    uart_puts(
+        "The basic format of command is \"{Command} [options...]\". Each token has limited length 31.\n"
+        "Command with suffix \"*\" indicates that it has optional arguments.\n"
+        "You can use \"{Command} --help\" to find more details.\n"
+        "\n"
+        "help\t: display the help menu.\n"
+        "hello\t: print \"Hello World!\"\n"
+        "mailbox*: communicate with VideoCoreIV GPU.\n"
+        "reboot\t: reboot system\n"
+    );
 }
 
 void command_hello(){
-    uart_puts("Hello world!\r\n");
+    uart_puts("Hello world!\n");
 }
 
 void command_mailbox(){
@@ -121,9 +124,11 @@ void command_mailbox(){
     }else{
         for(int i = 1; i < token_num; i++){
             if(!strcmp(tokens[i], "--help")){
-                uart_puts("[default]\t\t: display all the following information.\r\n");
-                uart_puts("--revision\t\t: display the board revision.\r\n");
-                uart_puts("--arm-memory-info\t: display the ARM memory base address and size.\r\n");
+                uart_puts(
+                    "[default]\t\t: display all the following information.\n"
+                    "--revision\t\t: display the board revision.\n"
+                    "--arm-memory-info\t: display the ARM memory base address and size.\n"
+                );
             }else if(!strcmp(tokens[i], "--revision")){
                 get_board_revision();
             }else if(!strcmp(tokens[i], "--arm-memory-info")){
@@ -146,11 +151,11 @@ void get_board_revision(){
     mailbox[6] = END_TAG;
 
     if(mailbox_call(8)){
-        uart_puts("Mailbox error: get_board_revision()\r\n");
+        uart_puts("Mailbox error: get_board_revision()\n");
     }else{
         uart_puts("Board Revision: 0x");
         uart_put_hex(mailbox[5]);
-        uart_puts("\r\n");
+        uart_puts("\n");
     }
 }
 
@@ -167,17 +172,26 @@ void get_arm_memory_info(){
     mailbox[7] = END_TAG;
 
     if(mailbox_call(8)){
-        uart_puts("Mailbox error: get_arm_memory_info()\r\n");
+        uart_puts("Mailbox error: get_arm_memory_info()\n");
     }else{
         uart_puts("ARM memory base: 0x");
         uart_put_hex(mailbox[5]);
-        uart_puts("\r\n");
+        uart_puts("\n");
         uart_puts("ARM memory size: 0x");
         uart_put_hex(mailbox[6]);
-        uart_puts("\r\n");
+        uart_puts("\n");
     }
 }
 
 void command_reboot(){
+    exit = 1;
     reset();
+}
+
+void shell(){
+    uart_puts("Welcome to the OGC's shell. Using \"help\" for the information of supporting command.\n");
+    
+    while(!exit){
+        accept_command();
+    }
 }

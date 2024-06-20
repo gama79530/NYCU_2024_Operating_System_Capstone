@@ -2,4 +2,4 @@
 #define TOKEN_NUM_MAX 8
 #define TOKEN_MAX_LEN 32
 
-void accept_command();
+void shell();

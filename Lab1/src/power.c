@@ -55,6 +55,7 @@ void reset(){
     r = *PM_RSTS; 
     r &= 0x555;
     *PM_RSTS = PM_WDOG_MAGIC | r;   // boot from partition 0
-    *PM_WDOG = PM_WDOG_MAGIC | 10;
     *PM_RSTC = PM_WDOG_MAGIC | PM_RSTC_FULLRST;
+    *PM_WDOG = PM_WDOG_MAGIC | 1000;
 }
+
