@@ -38,8 +38,8 @@ run-arm:
 	qemu-system-aarch64 -M raspi3b -kernel kernel8.img -display none -d in_asm
 
 run: 
-	qemu-system-aarch64 -M ra1spi3b -kernel kernel8.img -display none -serial null -serial stdio
-
+	qemu-system-aarch64 -M raspi3b -kernel kernel8.img -display none -serial null -serial stdio
+	
 debug-qemu: 
 	qemu-system-aarch64 -M raspi3b -kernel kernel8.img -serial null -serial stdio -display none -S -s
 
