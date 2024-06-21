@@ -53,15 +53,14 @@ def shell():
             responses = receive()
             if responses:
                 for response in responses:
+                    response = response.rstrip('\r')
                     if response == '# ':
                         termios.tcflush(sys.stdin, termios.TCIFLUSH)
                         print(f'\r{response}', end='')
-                    else:
-                        response = response[:-1]
-                        if re.match(r'^\$[^$]+\$', response):
-                            execute(response[1:-1])
-                        elif response != request[:-1]:
-                            print(response)
+                    elif re.match(r'^\$[^$]+\$', response):
+                        execute(response[1:-1])
+                    elif response != request.rstrip('\n'):
+                        print(response)
             else:
                 rlist, _, _ = select.select([sys.stdin], [], [], 5e-2)
                 if rlist:
