@@ -2,21 +2,23 @@
 
 ## [Basic Exercise 1 - UART Bootloader](https://nycu-caslab.github.io/OSC2024/labs/lab2.html#basic-exercise-1-uart-bootloader-30)
 
-### remote_shell.py
+### uploader.py
 
-This program works as a remote shell, communicating with a Raspberry Pi through UART. It sends request commands and receives response messages. Moreover, it provides functions that work with a PC client.
+This program functions as a remote shell, communicating with a Raspberry Pi via UART. It sends request commands and receives response messages. Additionally, it provides functions that work with a PC client.
 
 ### loader
 
-This program works as a proxy for the kernel. It provides simple shell functions and a command, **upload_kernel**, that downloads a kernel image from the PC client and loads it into the Raspberry Pi.
+This program acts as a proxy for the kernel. It provides basic shell functions and includes two commands: **"download"**, which downloads a kernel image from the PC client, and **"boot"**, which loads the downloaded image onto the Raspberry Pi.
 
 ### kernel uploading protocol
 
-1. **loader** sends a request string **'\$upload_kernel\$\n'** to *remote_shell*.
-2. **remote_shell** receives **'\$upload_kernel\$\n'** and reples with **an integer string** that implies the size of kernel image.
-3. **loader** receives the kernel size and replies with **'\$start_upload\n'**
-4. **remote_shell** receives **'\$start_upload\n'** and upload **kernel image**
-5. **loader** receives kernel image and replies with **'\$done\n'**
+1. **uploader** sends a command *"download\n"* to **loader**.
+2. **loader** initiates the download process by sending a request string *"\$upload_kernel\$\n"* to **uploader**.
+3. **uploader** receives *"\$upload_kernel\$\n"* and replies with a *"4-byte data"* that indicates the size of the kernel image in little-endian format.
+4. **loader** receives the kernel size and replies with *"start_upload\$"*.
+5. **uploader** receives *"start_upload\$"* and uploads the kernel image.
+6. **loader** receives the kernel image and replies with *"done\$"*.
+7. **uploader** receives *"done\$"* and ends the process.
 
 ## Reference
 
