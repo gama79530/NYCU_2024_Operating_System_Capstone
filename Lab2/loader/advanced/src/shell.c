@@ -1,6 +1,7 @@
 #include "shell.h"
 #include "mini_uart.h"
 #include "string.h"
+#include "delay.h"
 
 #define KERNEL_ADDR 0x80000
 
@@ -71,6 +72,7 @@ static void command_download(void){
 static void command_boot(void){
     if(kernel_size){
         uart_putln("boot kernel image...");
+        wait_msec(1000);
         void (*kernel)(unsigned long) = (void (*)(unsigned long))KERNEL_ADDR;
         kernel(dtb_ptr);
     }else{
