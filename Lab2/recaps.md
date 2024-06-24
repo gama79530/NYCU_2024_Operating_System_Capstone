@@ -20,8 +20,16 @@ This program acts as a proxy for the kernel. It provides basic shell functions a
 6. **loader** receives the kernel image and replies with *"done\$"*.
 7. **uploader** receives *"done\$"* and ends the process.
 
+## [Advanced Exercise 1 - Bootloader Self Relocation](https://nycu-caslab.github.io/OSC2024/labs/lab2.html#advanced-exercise-1-bootloader-self-relocation-10)
+
+1. Load the loader at address 0x80000.
+2. Set the offset to 0x20000.
+3. Copy the code to address 0x60000 (0x80000 - offset).
+4. Jump to the offset main function of the loader.
+
 ## Reference
 
 1. [Lab 2: Booting](https://nycu-caslab.github.io/OSC2024/labs/lab2.html)
 2. [bztsrc / raspi3-tutorial](https://github.com/bztsrc/raspi3-tutorial)
 3. [s-matyukevich / raspberry-pi-os](https://github.com/s-matyukevich/raspberry-pi-os)
+4. [Linker Script初探 - GNU Linker Ld手冊略讀](https://wen00072.github.io/blog/2014/03/14/study-on-the-linker-script/#bkg-sec)

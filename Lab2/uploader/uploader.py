@@ -7,8 +7,7 @@ import sys
 import termios
 
 __kernel_path = './Lab2/kernel/kernel8.img'
-__port = '/dev/pts/5'
-# __port = '/dev/ttyUSB0'
+__port = '/dev/ttyUSB0'
 __baudrate = 115200
 __communicator = None
 __timeout = 5
@@ -68,8 +67,9 @@ def shell() -> None:
     except KeyboardInterrupt:
         print('\rUploader is terminated.')
     finally:
-        __communicator.close()
-        __communicator = None
+        if __communicator is not None:
+            __communicator.close()
+            __communicator = None
 
 
 def exec(command: str) -> None:
