@@ -3,6 +3,7 @@
 #include "string.h"
 #include "mailbox.h"
 #include "power.h"
+#include "cpio.h"
 
 #define KERNEL_ADDR 0x80000
 
@@ -23,6 +24,8 @@ static void command_help(void);
 static void command_hello(void);
 static void command_mailbox(void);
 static void command_reboot(void);
+static void command_ls(void);
+static void command_cat(void);
 
 void get_board_revision(void);
 void get_arm_memory_info(void);
@@ -71,7 +74,9 @@ static void parse_command(void){
         }
         *t = '\0';
 
-        token_num++;
+        if(t != tokens[token_num]){
+            token_num++;
+        }
     }
 }
 
@@ -89,6 +94,10 @@ static void execute_command(void){
             command_mailbox();
         }else if(!strncmp(tokens[0], "reboot", TOKEN_MAX_LEN)){
             command_reboot();
+        }else if(!strncmp(tokens[0], "ls", TOKEN_MAX_LEN)){
+            command_ls();
+        }else if(!strncmp(tokens[0], "cat", TOKEN_MAX_LEN)){
+            command_cat();
         }else{
             uart_puts("Unsupported command: ");
             uart_putln(buffer);
@@ -109,10 +118,12 @@ static void command_help(void){
     uart_putln("A command with the suffix \"*\" indicates that it has optional arguments.");
     uart_putln("You can use \"{Command} --help\" to find more details.");
     uart_putln("");
-    uart_putln("help\t: display the help menu.");
-    uart_putln("hello\t: print \"Hello World!\"");
-    uart_putln("mailbox*: communicate with the VideoCoreIV GPU.");
-    uart_putln("reboot\t: reboot system");
+    uart_putln("help\t: Display the help menu.");
+    uart_putln("hello\t: Print \"Hello World!\"");
+    uart_putln("mailbox*: Communicate with the VideoCoreIV GPU.");
+    uart_putln("reboot\t: Reboot system");
+    uart_putln("ls*\t: List all file names in ramdisk.");
+    uart_putln("cat*\t: Display file name and content.");
 }
 
 static void command_hello(void){
@@ -126,9 +137,9 @@ static void command_mailbox(void){
     }else{
         for(int i = 1; i < token_num; i++){
             if(!strcmp(tokens[i], "--help")){
-                uart_putln("[default]\t\t: display all the following information.");
-                uart_putln("--revision\t\t: display the board revision.");
-                uart_putln("--arm-memory-info\t: display the ARM memory base address and size.");
+                uart_putln("[default]\t\t: Display all the following information.");
+                uart_putln("--revision\t\t: Display the board revision.");
+                uart_putln("--arm-memory-info\t: Display the ARM memory base address and size.");
             }else if(!strcmp(tokens[i], "--revision")){
                 get_board_revision();
             }else if(!strcmp(tokens[i], "--arm-memory-info")){
@@ -143,6 +154,99 @@ static void command_mailbox(void){
 
 static void command_reboot(void){
     power_reset(100);
+}
+
+static void command_ls(void){
+    int is_help = 0;
+    int is_match;
+    char *current;
+    file_info_t info;
+
+    for(int i = 1; i < token_num && !is_help; i++){
+        is_help = !strcmp(tokens[i], "--help");
+    }
+
+    if(is_help){
+        uart_putln("[default]\t: Display all file names in the ramdisk.");
+        uart_putln("{file name}\t: Check whether the file is in the ramdisk.");
+        uart_putln("\t\t  You can specify multiple files at once.");
+    }else if(token_num == 1){
+        current = get_cpio_ptr();
+        while(current != 0){
+            // extract file info
+            if(iter(&current, &info)){
+                break;
+            }
+            uart_putln(info.name);
+        }
+    }else{
+        for(int i = 1; i < token_num; i++){
+            is_match = 0;
+            current = get_cpio_ptr();
+            while(current != 0 && !is_match){
+                // extract file info
+                if(iter(&current, &info)){
+                    break;
+                }
+                is_match = !strcmp(tokens[i], info.name);
+            }
+            if(is_match){
+                uart_puts("File \"");
+                uart_puts(tokens[i]);
+                uart_putln("\" exists.");
+            }else{
+                uart_puts("File \"");
+                uart_puts(tokens[i]);
+                uart_putln("\" does not exist.");
+            }
+        }
+    }
+}
+
+static void command_cat(void){
+    int is_help = 0;
+    char *current;
+    file_info_t info;
+
+    for(int i = 1; i < token_num && !is_help; i++){
+        is_help = !strcmp(tokens[i], "--help");
+    }
+
+    if(is_help){
+        uart_putln("[default]\t: Display all file names and their contents in the ramdisk.");
+        uart_putln("{file name}\t: Display the file name and its content if it is in the ramdisk.");
+        uart_putln("\t\t  You can specify multiple files at once.");
+    }else if(token_num == 1){
+        current = get_cpio_ptr();
+        while(current != 0){
+            // extract file info
+            if(iter(&current, &info)){
+                break;
+            }
+            if(strcmp(info.name, ".")){
+                uart_putln(info.name);
+                uart_put_mutiln(info.content, info.content_size);
+                uart_putln("");
+            }
+        }
+    }else{
+        for(int i = 1; i < token_num; i++){
+            current = get_cpio_ptr();
+            while(current != 0){
+                // extract file info
+                if(iter(&current, &info)){
+                    break;
+                }
+
+                if(!strcmp(tokens[i], info.name)){
+                    uart_putln(info.name);
+                    uart_put_mutiln(info.content, info.content_size);
+                    break;
+                }
+            }
+            uart_putln("");
+        }
+    }
 }
 
 void get_board_revision(void){

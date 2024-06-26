@@ -63,12 +63,18 @@ void uart_putln(const char *s){
     uart_puts("\r\n");
 }
 
-void uart_put_mutiln(const char *s){
-    while(*s){
+void uart_put_mutiln(const char *s, int len){
+    while(*s && len){
         // convert newline to carriage return + newline
         if(*s == '\n'){ 
             uart_putc('\r');
         }
         uart_putc(*s++);
+        if(len > 0){
+            len--;
+        }
+    }
+    if(!len){
+        uart_putln("");
     }
 }

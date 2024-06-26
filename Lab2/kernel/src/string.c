@@ -6,7 +6,9 @@
     (b) = t;\
 }
 
-#define to_hex_str(n, bytes){\
+static char buffer[17] = {0};
+
+#define num_to_hex_str(n, bytes){\
     for(int i = 0; i < 2*(bytes); i++){\
         buffer[i] = ((n) >> (4 * (2 * bytes - i - 1))) & 0xF;\
         buffer[i] += (buffer[i] > 9 ? 0x37 : 0x30);\
@@ -14,16 +16,28 @@
     buffer[2*(bytes)] = '\0';\
 }
 
-static char buffer[17] = {0};
-
 char* char_to_hex_str(char c){
-    to_hex_str(c, 1);
+    num_to_hex_str(c, 1);
     return buffer;
 }
 
 char* int_to_hex_str(int n){
-    to_hex_str(n, 4);
+    num_to_hex_str(n, 4);
     return buffer;
+}
+
+#define hex_str_to_num(c, n, bytes){\
+    for(int i = 0; i < (2 * bytes) && (c)[i] != '\0'; i++){\
+        (n) <<= 4;\
+        (n) |= ((c)[i] > '9' ? (c)[i] - 'A' + 10  : (c)[i] - '0');\
+    }\
+}
+
+int hex_str_to_uint(char *c){
+    unsigned int n = 0;
+    hex_str_to_num(c, n, 4);
+
+    return n;
 }
 
 char* uint_to_dec_str(unsigned int i){
@@ -69,5 +83,5 @@ int strncmp(const char *s1, const char *s2, int len){
         len--;
     }
 
-    return (*us1 > *us2) - (*us1 < *us2);
+    return len ? (*us1 > *us2) - (*us1 < *us2) : 0;
 }

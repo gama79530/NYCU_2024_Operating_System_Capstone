@@ -34,14 +34,11 @@ kernel8.img: $(SRC_DIR)/linker.ld $(OBJ_FILES)
 clean:
 	rm -rf $(BUILD_DIR) *.img
 
-run-arm: 
-	qemu-system-aarch64 -M raspi3b -kernel kernel8.img -display none -d in_asm
-
 run: 
-	qemu-system-aarch64 -M raspi3b -kernel kernel8.img -display none -serial null -serial stdio
+	qemu-system-aarch64 -M raspi3b -kernel kernel8.img -display none -serial null -serial stdio -initrd initramfs.cpio
 	
 debug-qemu: 
-	qemu-system-aarch64 -M raspi3b -kernel kernel8.img -serial null -serial stdio -display none -S -s
+	qemu-system-aarch64 -M raspi3b -kernel kernel8.img -serial null -serial stdio -display none -S -s -initrd initramfs.cpio
 
 debug-gdb:
 	gdb-multiarch build/kernel8.elf

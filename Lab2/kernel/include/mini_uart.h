@@ -9,6 +9,6 @@ void uart_putc(char c);
 
 void uart_puts(const char *s);
 void uart_putln(const char *s);
-void uart_put_mutiln(const char *s);
+void uart_put_mutiln(const char *s, int len);
 
 #endif
