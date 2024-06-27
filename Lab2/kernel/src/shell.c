@@ -205,6 +205,7 @@ static void command_ls(void){
 
 static void command_cat(void){
     int is_help = 0;
+    int is_root = 1;
     char *current;
     file_info_t info;
 
@@ -223,11 +224,15 @@ static void command_cat(void){
             if(iter(&current, &info)){
                 break;
             }
-            if(strcmp(info.name, ".")){
-                uart_putln(info.name);
-                uart_put_mutiln(info.content, info.content_size);
-                uart_putln("");
+
+            if(is_root){
+                is_root = 0;
+                continue;
             }
+            
+            uart_putln(info.name);
+            uart_put_mutiln(info.content, info.content_size);
+            uart_putln("");
         }
     }else{
         for(int i = 1; i < token_num; i++){

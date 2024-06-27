@@ -1,6 +1,7 @@
 *.o
 build
 *.img
+*.cpio
 
 venv
 .vscode

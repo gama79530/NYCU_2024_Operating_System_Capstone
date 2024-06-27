@@ -30,9 +30,11 @@ kernel8.img: $(SRC_DIR)/linker.ld $(OBJ_FILES)
 	mkdir -p $(@D)
 	$(ARMGNU)-ld -T $(SRC_DIR)/linker.ld -o $(BUILD_DIR)/kernel8.elf  $(OBJ_FILES)
 	$(ARMGNU)-objcopy $(BUILD_DIR)/kernel8.elf -O binary kernel8.img
+	cd rootfs; find . | cpio -o -H newc > ../initramfs.cpio; cd ..
 
 clean:
 	rm -rf $(BUILD_DIR) *.img
+	rm -rf initramfs.cpio
 
 run: 
 	qemu-system-aarch64 -M raspi3b -kernel kernel8.img -display none -serial null -serial stdio

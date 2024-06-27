@@ -6,6 +6,8 @@ ASMCFLAGS = -Iinclude
 BUILD_DIR = build
 SRC_DIR = src
 
+CPIO = ../loader/advanced/initramfs.cpio
+
 all: kernel8.img
 
 debug: CFLAGS += -g
@@ -35,10 +37,10 @@ clean:
 	rm -rf $(BUILD_DIR) *.img
 
 run: 
-	qemu-system-aarch64 -M raspi3b -kernel kernel8.img -display none -serial null -serial stdio -initrd initramfs.cpio
+	qemu-system-aarch64 -M raspi3b -kernel kernel8.img -display none -serial null -serial stdio -initrd $(CPIO)
 	
 debug-qemu: 
-	qemu-system-aarch64 -M raspi3b -kernel kernel8.img -serial null -serial stdio -display none -S -s -initrd initramfs.cpio
+	qemu-system-aarch64 -M raspi3b -kernel kernel8.img -serial null -serial stdio -display none -S -s -initrd $(CPIO)
 
 debug-gdb:
 	gdb-multiarch build/kernel8.elf

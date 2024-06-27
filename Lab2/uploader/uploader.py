@@ -60,7 +60,7 @@ def shell() -> None:
                         print('Uploader is terminated.')
                         sys.exit()
 
-                    __communicator.write(request.encode(encoding='ascii'))
+                    __communicator.write(request.encode())
 
     except serial.SerialException as e:
         print(e)
@@ -111,7 +111,7 @@ def receive() -> list[str] | None:
         responses_bytes += __communicator.read(__communicator.in_waiting)
         time.sleep(5e-2)
 
-    responses = responses_bytes.decode(encoding='ascii').split(sep='\n')
+    responses = responses_bytes.decode().split(sep='\n')
     return responses
 
 
