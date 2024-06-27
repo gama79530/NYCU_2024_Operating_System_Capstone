@@ -22,7 +22,11 @@ This program acts as a proxy for the kernel. It provides basic shell functions a
 
 ## [Basic Exercise 2 - Initial Ramdisk](https://nycu-caslab.github.io/OSC2024/labs/lab2.html#basic-exercise-2-initial-ramdisk-30)
 
-123
+1. cpio.h / cpio.c
+
+## [Basic Exercise 3 - Simple Allocator](https://nycu-caslab.github.io/OSC2024/labs/lab2.html#basic-exercise-3-simple-allocator-10)
+
+1. memory.h / memory.c
 
 ## [Advanced Exercise 1 - Bootloader Self Relocation](https://nycu-caslab.github.io/OSC2024/labs/lab2.html#advanced-exercise-1-bootloader-self-relocation-10)
 
