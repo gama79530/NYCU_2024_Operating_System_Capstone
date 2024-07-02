@@ -1,13 +1,19 @@
 #include "cpio.h"
 #include "string.h"
+#include "memory.h"
+#include "util.h"
+#include "dtb.h"
+#include "mini_uart.h"
 
-static char *_cpio_ptr = (char*)0x8000000;
+/* "_cpio_ptr" is set by the default setting in "config.txt", but we can read the value 
+   from the device tree rather than hard coding it. */
+static void *_cpio_ptr = (void*)0x8000000; 
 
-void set_cpio_ptr(char *cpio_ptr){
-    _cpio_ptr = cpio_ptr;
+void set_cpio_ptr(const void *cpio_ptr){
+    _cpio_ptr = (void*)cpio_ptr;
 }
 
-char* get_cpio_ptr(){
+void* get_cpio_ptr(){
     return _cpio_ptr;
 }
 
@@ -50,4 +56,24 @@ int iter(char **current_ref, file_info_t *info_ref){
     *current_ref += offset;
 
     return 0;
+}
+
+void cpio_callback(uint32_t token, const char *name, const void *data, uint32_t len){
+    if(FDT_PROP == to_little_u32(token) && !strcmp(name, "linux,initrd-start")){
+        uint32_t cpio_addr = to_little_u32(*(uint32_t*)data);
+        uint64_t cpio_ptr = (uint64_t)cpio_addr;
+        set_cpio_ptr((const void*)cpio_ptr);
+    }
+}
+
+int cpio_init(void){
+    int ret = fdt_traverse(cpio_callback);
+    if(ret){
+        uart_putln("cpio_init fail");
+    }else{
+        uart_puts("cpio@0x");
+        uart_putln(long_to_hex_str((long)get_cpio_ptr()));
+    }
+
+    return ret;
 }

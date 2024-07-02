@@ -1,14 +1,12 @@
 #include "mini_uart.h"
 #include "shell.h"
 #include "string.h"
-
-unsigned int kernel_size;
-unsigned long dtb_ptr;
+#include "dtb.h"
+#include "cpio.h"
 
 void main(unsigned long x0){
-    kernel_size = 0;
-    dtb_ptr = x0;
-
+    set_dtb_ptr((void*)x0);
     uart_init();
+    cpio_init();
     shell();
 }

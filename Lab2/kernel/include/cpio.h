@@ -1,6 +1,9 @@
 #ifndef CPIO_H
 #define CPIO_H
 
+#include "hint.h"
+#include "dtb.h"
+
 /* CPIO archive - new ascii format:
 
 +---------------------------------------------------------------+
@@ -55,9 +58,13 @@ typedef struct file_info{
 } file_info_t;
 
 
-void set_cpio_ptr(char *cpio_ptr);
-char* get_cpio_ptr(void);
+void set_cpio_ptr(const void *cpio_ptr);
+void* get_cpio_ptr(void);
 
 int iter(char **current_ref, file_info_t *info_ref);
+
+void cpio_callback(uint32_t token, const char *name, const void *data, uint32_t len);
+
+int cpio_init(void);
 
 #endif

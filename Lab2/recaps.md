@@ -35,6 +35,10 @@ This program acts as a proxy for the kernel. It provides basic shell functions a
 3. Copy the code to address 0x60000 (0x80000 - offset).
 4. Jump to the offset main function of the loader.
 
+## [Advanced Exercise 2 - Devicetree](https://nycu-caslab.github.io/OSC2024/labs/lab2.html#advanced-exercise-2-devicetree-30)
+
+1. Read the format of flatten format tree.
+
 ## Reference
 
 1. [Lab 2: Booting](https://nycu-caslab.github.io/OSC2024/labs/lab2.html)
@@ -43,3 +47,4 @@ This program acts as a proxy for the kernel. It provides basic shell functions a
 4. [Linker Script初探 - GNU Linker Ld手冊略讀](https://wen00072.github.io/blog/2014/03/14/study-on-the-linker-script/#bkg-sec)
 5. [FreeBSD Manual Pages](https://man.freebsd.org/cgi/man.cgi?query=cpio&sektion=5)
 6. [RPiconfig](https://elinux.org/RPiconfig)
+7. [Device Tree](https://hackmd.io/@0xff07/r1cJFN4QD)

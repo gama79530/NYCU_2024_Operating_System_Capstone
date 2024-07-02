@@ -17,12 +17,17 @@ static char buffer[17] = {0};
 }
 
 char* char_to_hex_str(char c){
-    num_to_hex_str(c, 1);
+    num_to_hex_str(c, sizeof(char));
     return buffer;
 }
 
 char* int_to_hex_str(int n){
-    num_to_hex_str(n, 4);
+    num_to_hex_str(n, sizeof(int));
+    return buffer;
+}
+
+char* long_to_hex_str(long l){
+    num_to_hex_str(l, sizeof(long));
     return buffer;
 }
 
@@ -84,4 +89,13 @@ int strncmp(const char *s1, const char *s2, int len){
     }
 
     return len ? (*us1 > *us2) - (*us1 < *us2) : 0;
+}
+
+int str_len(const char *s){
+    int len = 0;
+    while(*s != '\0'){
+        len++;
+        s++;
+    }
+    return len;
 }

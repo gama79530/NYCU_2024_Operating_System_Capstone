@@ -1,6 +1,8 @@
 #ifndef MEMORY_H
 #define MEMORY_H
 
+#include "hint.h"
+
 #define HEAP_BASE   0x200000
 #define HEAP_SIZE   0X100000    // 1 MB heap
 #define HEAP_TAIL   (HEAP_BASE + HEAP_SIZE)

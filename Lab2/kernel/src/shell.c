@@ -5,11 +5,6 @@
 #include "power.h"
 #include "cpio.h"
 
-#define KERNEL_ADDR 0x80000
-
-extern unsigned int kernel_size;
-extern unsigned long dtb_ptr;
-
 static char buffer[BUFFER_MAX_SIZE] = {0};
 static char tokens[TOKEN_NUM_MAX][TOKEN_MAX_LEN] = {0};
 static int token_num = 0;

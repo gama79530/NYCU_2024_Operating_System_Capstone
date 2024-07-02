@@ -1,5 +1,4 @@
 #include "memory.h"
-#include "hint.h"
 
 static void *_alloc_cur = (void*)HEAP_BASE;
 
