@@ -1,0 +1,20 @@
+#ifndef STRING_H
+#define STRING_H
+#include "types.h"
+
+char* char_to_hex_str(char c);
+char* int_to_hex_str(int i);
+char* long_to_hex_str(long l);
+
+uint32_t hex_str_to_uint(char *s);
+
+char* uint_to_dec_str(uint32_t i);
+
+uint32_t dec_str_to_uint(char *s);
+
+int strcmp(const char *s1, const char *s2);
+int strncmp(const char *s1, const char *s2, int len);
+
+int str_len(const char *s);
+
+#endif

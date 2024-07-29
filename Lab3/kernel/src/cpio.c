@@ -1,0 +1,81 @@
+#include "cpio.h"
+#include "string.h"
+#include "dtb.h"
+#include "util.h"
+#include "mini_uart.h"
+
+/* "_cpio_ptr" is set by the default setting in "config.txt", but we can read the value 
+   from the device tree rather than hard coding it. 
+*/
+static void *_cpio_ptr = (void*)0x8000000;
+
+void set_cpio_ptr(const void *cpio_ptr){
+    _cpio_ptr = (void*)cpio_ptr;
+}
+
+void* get_cpio_ptr(){
+    return _cpio_ptr;
+}
+
+int iter(void IN OUT **current_ref, file_info_t OUT *info_ref){
+    void *current = *current_ref;
+    uint64_t offset = 0;
+    cpio_newc_header_t *header = (cpio_newc_header_t*)current;
+
+    // magic number check
+    if(strncmp(header->c_magic, "070701", 6)){
+        *current_ref = 0;
+        return CPIO_ITER_MAGIC_ERROR;
+    }
+
+    // find file name
+    if(info_ref != NULL){
+        info_ref->name = (char*)current + sizeof(cpio_newc_header_t);
+        info_ref->name_size = hex_str_to_uint(header->c_namesize);
+    }
+
+    // current is end of file
+    if(!strcmp((char*)current + sizeof(cpio_newc_header_t), "TRAILER!!!")){
+        *current_ref = 0;
+        return CPIO_ITER_EOF;
+    }
+
+    // find offset for content
+    offset = mem_align(sizeof(cpio_newc_header_t) + info_ref->name_size, 4);
+    offset = sizeof(cpio_newc_header_t) + info_ref->name_size;
+    if(offset % 4){
+        offset += (4 - offset % 4);
+    }
+
+    // find content
+    if(info_ref != NULL){
+        info_ref->content = current + offset;
+        info_ref->content_size = hex_str_to_uint(header->c_filesize);
+    }
+
+    // find offset for next
+    offset = mem_align(offset + hex_str_to_uint(header->c_filesize), 4);
+    *current_ref += offset;
+
+    return 0;
+}
+
+void cpio_callback(uint32_t token, const char *name, const void *data, uint32_t len){
+    if(FDT_PROP == to_little_u32(token) && !strcmp(name, "linux,initrd-start")){
+        uint32_t cpio_addr = to_little_u32(*(uint32_t*)data);
+        uint64_t cpio_ptr = (uint64_t)cpio_addr;
+        set_cpio_ptr((const void*)cpio_ptr);
+    }
+}
+
+int cpio_init(void){
+    int ret = fdt_traverse(cpio_callback);
+    if(ret){
+        uart_putln("cpio_init fail");
+    }else{
+        uart_puts("cpio@0x");
+        uart_putln(long_to_hex_str((long)get_cpio_ptr()));
+    }
+
+    return ret;
+}
