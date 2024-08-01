@@ -25,19 +25,21 @@ void uart_putln(const char *s);
 void uart_put_mutiln(const char *s, uint32_t len);
 
 /* async io*/
-int rx_is_empty();
-int rx_is_full();
-char get_from_rx(void);
-void put_to_rx(char c);
-
-int tx_is_empty();
-int tx_is_full();
-char get_from_tx();
-void put_to_tx(char c);
-
 char uart_async_getb(void);
 char uart_async_getc(void);
 void uart_async_putc(char c);
 
+int rx_is_empty();
+int rx_is_full();
+char get_from_rx_buffer(void);
+void put_to_rx_buffer(char c);
+
+int tx_is_empty();
+int tx_is_full();
+char get_from_tx_buffer();
+void put_to_tx_buffer(char c);
+
+void handler_mini_uart_rx(void);
+void handler_mini_uart_tx(void);
 
 #endif

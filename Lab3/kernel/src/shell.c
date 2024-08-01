@@ -143,15 +143,15 @@ static void command_help(void){
     uart_putln("A command with the suffix \"*\" indicates that it has optional arguments.");
     uart_putln("You can use \"{Command} --help\" to find more details.");
     uart_putln("");
-    uart_putln("help\t\t: Display the help menu.");
-    uart_putln("hello\t\t: Print \"Hello World!\"");
-    uart_putln("mailbox*\t: Communicate with the VideoCoreIV GPU.");
-    uart_putln("reboot\t\t: Reboot system");
-    uart_putln("ls*\t\t: List the file names in ramdisk.");
-    uart_putln("cat#\t\t: Display the file content in ramdisk.");
-    uart_putln("exec#\t\t: Execute a program in Ramdisk.");
+    uart_putln("help\t: Display the help menu.");
+    uart_putln("hello\t: Print \"Hello World!\"");
+    uart_putln("mailbox*: Communicate with the VideoCoreIV GPU.");
+    uart_putln("reboot\t: Reboot system");
+    uart_putln("ls*\t: List the file names in ramdisk.");
+    uart_putln("cat#\t: Display the file content in ramdisk.");
+    uart_putln("exec#\t: Execute a program in Ramdisk.");
     uart_putln("timer*\t: Display the number of seconds since booting and trigger a delayed timer interrupt.");
-    uart_putln("async\t\t: Demo uart asyncio.");
+    uart_putln("async\t: Demo uart asyncio.");
 }
 
 static void command_hello(void){
@@ -309,38 +309,44 @@ static void command_exec(void){
 
 static void command_timer(void){
     int is_help = 0;
-    uint64_t expire_time = 0;
+    uint64_t duration = 2;
+    const char *msg = NULL;
     
-    for(int i = 1; i < token_num && !is_help; i++){
-        is_help = !strcmp(tokens[i], "--help");
+    for(int i = 1; i < token_num; i++){
+        if(!strncmp(tokens[i], "--help", 6)){
+            is_help = 1;
+            break;
+        }else if(!strncmp(tokens[i], "--duration=", 11)){
+            duration = dec_str_to_uint(tokens[i] + 11);
+        }else if(!strncmp(tokens[i], "--message=", 10)){
+            msg = tokens[i] + 10;
+        }
     }
 
     if(is_help){
-        uart_putln("{default}\t: expire time = 2.");
-        uart_putln("[expire time]\t: The expiration time (in decimal format, second) set by the timer.");
-    }else if(token_num < 3){
+        uart_putln("{default}\t: duration = 2 and message = \"<Timer>: The number of seconds since booting is {sys_time}\".");
+        uart_putln("--duration\t: The duration (in decimal format, seconds) set for the timer.");
+        uart_putln("--message\t: The message that will be prompted after the duration expires.");
+    }else{
         uint64_t time = get_current_time();
         uart_puts("The number of seconds since booting is ");
         uart_puts(uint_to_dec_str(time));
         uart_putln(".");
-
-        expire_time = token_num == 1 ? 2 : dec_str_to_uint(tokens[1]);
-        set_period(expire_time, SECOND);
-        core_timer_enable();
+        add_timeout_event(duration, msg);
+        
+        // set_period(duration, SECOND);
+        // core_timer_enable();
     }
 }
 
 static void command_async(void){
     enable_irqs_1();
-    interrupt_rx_set();
     char c;
-    enable_irqs_1();
     do{
         c = uart_async_getc();
-        put_to_tx(c);
+        put_to_tx_buffer(c);
     }while(c != '\n');
     interrupt_tx_set();
-
 }
 
 void get_board_revision(void){

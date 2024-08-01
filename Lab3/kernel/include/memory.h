@@ -9,4 +9,6 @@
 void* mem_alloc(uint32_t size);
 void mem_free(void *ptr);
 
+#define malloc mem_alloc
+
 #endif

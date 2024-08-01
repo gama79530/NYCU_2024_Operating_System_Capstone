@@ -1,6 +1,9 @@
 #ifndef EXCEPTION_H
 #define EXCEPTION_H
 #include "types.h"
+#include "list.h"
+
+typedef void (*task_callback)(void);
 
 #define enable_interrupt_all() asm volatile("msr   daifclr, #0xf")
 #define disable_interrupt_all() asm volatile("msr   daifset, #0xf")

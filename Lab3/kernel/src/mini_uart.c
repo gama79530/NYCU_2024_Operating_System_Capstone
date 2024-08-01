@@ -2,10 +2,10 @@
 #include "util.h"
 #include "peripheral.h"
 
-#define RX_EMPTY    (rx_head == rx_tail)
-#define RX_FULL     (rx_head == (rx_tail + 1) % RX_BUFFER_SIZE)
-#define TX_EMPTY    (tx_head == tx_tail)
-#define TX_FULL     (tx_head == (tx_tail + 1) % TX_BUFFER_SIZE)
+#define RX_BUFFER_EMPTY    (rx_head == rx_tail)
+#define RX_BUFFER_FULL     (rx_head == (rx_tail + 1) % RX_BUFFER_SIZE)
+#define TX_BUFFER_EMPTY    (tx_head == tx_tail)
+#define TX_BUFFER_FULL     (tx_head == (tx_tail + 1) % TX_BUFFER_SIZE)
 
 static char rx_buffer[RX_BUFFER_SIZE] = {0};
 static char tx_buffer[TX_BUFFER_SIZE] = {0};
@@ -123,52 +123,14 @@ void uart_put_mutiln(const char *s, uint32_t len){
 }
 
 /* async io */
-int rx_is_empty(){
-    return RX_EMPTY;
-}
-
-int rx_is_full(){
-    return RX_FULL;
-}
-
-char get_from_rx(void){
-    char c = rx_buffer[rx_head++];
-    rx_head &= (RX_BUFFER_SIZE - 1);    // equivalent to "rx_head %= RX_BUFFER_SIZE;" while TX_BUFFER_SIZE is power of 2.
-    return c;
-}
-
-void put_to_rx(char c){
-    rx_buffer[rx_tail++] = c;
-    rx_tail &= (RX_BUFFER_SIZE - 1);    // equivalent to "rx_tail %= RX_BUFFER_SIZE;" while RX_BUFFER_SIZE is power of 2.
-}
-
-int tx_is_empty(){
-    return TX_EMPTY;
-}
-
-int tx_is_full(){
-    return TX_FULL;
-}
-
-char get_from_tx(){
-    char c = tx_buffer[tx_head++];
-    tx_head &= (TX_BUFFER_SIZE - 1);    // equivalent to "tx_head %= TX_BUFFER_SIZE;" while TX_BUFFER_SIZE is power of 2.
-    return c;
-}
-
-void put_to_tx(char c){
-    tx_buffer[tx_tail++] = c;
-    tx_tail &= (TX_BUFFER_SIZE - 1);    // equivalent to "tx_tail %= TX_BUFFER_SIZE;" while RX_BUFFER_SIZE is power of 2.
-}
-
 char uart_async_getb(void){
-    char c;
     interrupt_rx_set();
-    while(RX_EMPTY){
+    char c;
+    while(RX_BUFFER_EMPTY){
         asm volatile("nop");
     }
     disable_irqs_1();   // mask aux irq while we retrive data from buffer
-    c = get_from_rx();
+    c = get_from_rx_buffer();
     enable_irqs_1();
     return c;
 }
@@ -183,9 +145,67 @@ char uart_async_getc(void){
 }
 
 void uart_async_putc(char c){
-    while(TX_FULL){
-        asm volatile("nop");
+    if(TX_BUFFER_FULL){    
+        interrupt_tx_set();
+        while(!TX_BUFFER_EMPTY){
+            asm volatile("nop");
+        }
     }
+    put_to_tx_buffer(c);
+    interrupt_tx_set();
+}
+
+int rx_is_empty(){
+    return RX_BUFFER_EMPTY;
+}
+
+int rx_is_full(){
+    return RX_BUFFER_FULL;
+}
+
+char get_from_rx_buffer(void){
+    char c = rx_buffer[rx_head++];
+    rx_head &= (RX_BUFFER_SIZE - 1);    // equivalent to "rx_head %= RX_BUFFER_SIZE;" while TX_BUFFER_SIZE is power of 2.
+    return c;
+}
+
+void put_to_rx_buffer(char c){
+    rx_buffer[rx_tail++] = c;
+    rx_tail &= (RX_BUFFER_SIZE - 1);    // equivalent to "rx_tail %= RX_BUFFER_SIZE;" while RX_BUFFER_SIZE is power of 2.
+}
+
+int tx_is_empty(){
+    return TX_BUFFER_EMPTY;
+}
+
+int tx_is_full(){
+    return TX_BUFFER_FULL;
+}
+
+char get_from_tx_buffer(){
+    char c = tx_buffer[tx_head++];
+    tx_head &= (TX_BUFFER_SIZE - 1);    // equivalent to "tx_head %= TX_BUFFER_SIZE;" while TX_BUFFER_SIZE is power of 2.
+    return c;
+}
+
+void put_to_tx_buffer(char c){
     tx_buffer[tx_tail++] = c;
-    tx_tail &= (TX_BUFFER_SIZE - 1);    // equivalent to "tx_tail %= TX_BUFFER_SIZE;" while TX_BUFFER_SIZE is power of 2.
+    tx_tail &= (TX_BUFFER_SIZE - 1);    // equivalent to "tx_tail %= TX_BUFFER_SIZE;" while RX_BUFFER_SIZE is power of 2.
+}
+
+void handler_mini_uart_rx(void){
+    disable_irqs_1();
+    uart_putln("Receiver holds valid byte");
+    put_to_rx_buffer(uart_getb());
+    interrupt_rx_clr();
+    enable_irqs_1();
+}
+
+void handler_mini_uart_tx(void){
+    disable_irqs_1();
+    uart_putln("Transmit holding register empty");
+    while(!tx_is_empty()){
+        uart_putc(get_from_tx_buffer());
+    }
+    // enable_irqs_1();
 }

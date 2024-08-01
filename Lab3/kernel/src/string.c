@@ -45,7 +45,7 @@ uint32_t hex_str_to_uint(char *s){
     return n;
 }
 
-char* uint_to_dec_str(uint32_t i){
+char* uint_to_dec_str(uint64_t i){
     if(i){
         int begin = 0, end = 0;
         while(i){
@@ -65,6 +65,7 @@ char* uint_to_dec_str(uint32_t i){
 
     return buffer;
 }
+
 
 uint32_t dec_str_to_uint(char *s){
     unsigned int num = 0;
@@ -89,7 +90,7 @@ int strcmp(const char *s1, const char *s2){
     return (*us1 > *us2) - (*us1 < *us2);
 }
 
-int strncmp(const char *s1, const char *s2, int len){
+int strncmp(const char *s1, const char *s2, uint32_t len){
     unsigned char* us1 = (unsigned char*)s1;
     unsigned char* us2 = (unsigned char*)s2;
 
@@ -109,4 +110,26 @@ int str_len(const char *s){
         s++;
     }
     return len;
+}
+
+void strcpy(const char *src, char *dest){
+    while(1){
+        *dest = *src;
+        if(*src == '\0'){
+            break;
+        }
+        src++;
+        dest++;
+    }
+}
+
+void strncpy(const char *src, char *dest, uint32_t len){
+    while(1){
+        *dest = *src;
+        if(!--len || *src == '\0'){
+            break;
+        }
+        src++;
+        dest++;
+    }
 }
