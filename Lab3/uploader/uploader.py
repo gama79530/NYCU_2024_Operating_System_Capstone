@@ -6,7 +6,7 @@ import select
 import sys
 import termios
 
-__kernel_path = './Lab2/kernel/kernel8.img'
+__kernel_path = './Lab3/kernel/kernel8.img'
 __port = '/dev/ttyUSB0'
 __baudrate = 115200
 __communicator = None
