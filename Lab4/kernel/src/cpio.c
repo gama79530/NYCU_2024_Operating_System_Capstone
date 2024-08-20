@@ -7,14 +7,15 @@
 /* "_cpio_ptr" is set by the default setting in "config.txt", but we can read the value 
    from the device tree rather than hard coding it. 
 */
-static void *_cpio_ptr = (void*)0x8000000;
+static void *cpio_begin_ptr = (void*)0x8000000;
+static void *cpio_end_ptr = (void*)0x08003600;
 
-void set_cpio_ptr(const void *cpio_ptr){
-    _cpio_ptr = (void*)cpio_ptr;
+void* get_cpio_begin_ptr(){
+    return cpio_begin_ptr;
 }
 
-void* get_cpio_ptr(){
-    return _cpio_ptr;
+void *get_cpio_end_ptr(void){
+    return cpio_end_ptr;
 }
 
 int cpio_iter(void IN OUT **current_ref, file_info_t OUT *info_ref){
@@ -41,7 +42,7 @@ int cpio_iter(void IN OUT **current_ref, file_info_t OUT *info_ref){
     }
 
     // find offset for content
-    offset = align(sizeof(cpio_newc_header_t) + info_ref->name_size, 4);
+    offset = align_ceiling(sizeof(cpio_newc_header_t) + info_ref->name_size, 4);
     offset = sizeof(cpio_newc_header_t) + info_ref->name_size;
     if(offset % 4){
         offset += (4 - offset % 4);
@@ -54,7 +55,7 @@ int cpio_iter(void IN OUT **current_ref, file_info_t OUT *info_ref){
     }
 
     // find offset for next
-    offset = align(offset + hex_str_to_uint(header->c_filesize), 4);
+    offset = align_ceiling(offset + hex_str_to_uint(header->c_filesize), 4);
     *current_ref += offset;
 
     return 0;
@@ -62,9 +63,9 @@ int cpio_iter(void IN OUT **current_ref, file_info_t OUT *info_ref){
 
 void cpio_callback(uint32_t token, const char *name, const void *data, uint32_t len){
     if(FDT_PROP == to_little_u32(token) && !strcmp(name, "linux,initrd-start")){
-        uint32_t cpio_addr = to_little_u32(*(uint32_t*)data);
-        uint64_t cpio_ptr = (uint64_t)cpio_addr;
-        set_cpio_ptr((const void*)cpio_ptr);
+        cpio_begin_ptr = (void*)(uint64_t)to_little_u32(*(uint32_t*)data);
+    }else if(FDT_PROP == to_little_u32(token) && !strcmp(name, "linux,initrd-end")){
+        cpio_end_ptr = (void*)(uint64_t)to_little_u32(*(uint32_t*)data);
     }
 }
 

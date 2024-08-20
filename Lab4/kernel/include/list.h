@@ -7,7 +7,7 @@ typedef struct list_head{
     struct list_head *next;
 } list_head_t;
 
-#define LIST_HEAD(name)     list_head_t name = {&(name), &(name)}
+#define LIST_HEAD(name)         list_head_t name = {&(name), &(name)}
 
 static inline void list_add(list_head_t *node, list_head_t *prev, list_head_t *next){
     prev->next = node;

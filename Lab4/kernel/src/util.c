@@ -29,8 +29,12 @@ void wait_msec(uint64_t n){
     }while(r - t < i);
 }
 
-uint64_t align(uint64_t target, uint64_t align){
+uint64_t align_ceiling(uint64_t target, uint64_t align){
     return (target + align - 1) & ~(align - 1);
+}
+
+uint64_t align_floor(uint64_t target, uint64_t align){
+    return target & ~(align - 1);
 }
 
 #define _to_little(u_ptr, ret_ptr, bytes){\

@@ -32,6 +32,10 @@ void* get_dtb_ptr(){
     return _dtb_ptr;
 }
 
+uint32_t get_dtb_size(){
+    return _dtb_struct_block_size;
+}
+
 static int _add_node(void IN OUT **cursor_ptr, fdt_callback_t cb){
     int ret = 0;
     uint32_t token;  
@@ -45,7 +49,7 @@ static int _add_node(void IN OUT **cursor_ptr, fdt_callback_t cb){
     node_name = (const char*)(*cursor_ptr);
     cb(token, node_name, NULL, 0);
 
-    *cursor_ptr += align(str_len(node_name) + 1, 4);
+    *cursor_ptr += align_ceiling(str_len(node_name) + 1, 4);
     while(*cursor_ptr < _dtb_struct_block_ptr + _dtb_struct_block_size){
         token = *(uint32_t*)*cursor_ptr;
         switch(to_little_u32(token)){
@@ -66,7 +70,7 @@ static int _add_node(void IN OUT **cursor_ptr, fdt_callback_t cb){
                 *cursor_ptr += 8;
                 cb(token, property_name, *cursor_ptr, property->len);
 
-                *cursor_ptr += align(to_little_u32(property->len), 4);
+                *cursor_ptr += align_ceiling(to_little_u32(property->len), 4);
                 break;
             case FDT_NOP:
                 *cursor_ptr += 4;

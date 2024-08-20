@@ -104,6 +104,7 @@ typedef struct fdt_property{
 // dtb functions
 void set_dtb_ptr(void *dtb_ptr);
 void* get_dtb_ptr();
+uint32_t get_dtb_size();
 
 // The input "token" and "len" are in big-endian format.
 typedef void (*fdt_callback_t)(uint32_t token, const char *name, const void *data, uint32_t len);

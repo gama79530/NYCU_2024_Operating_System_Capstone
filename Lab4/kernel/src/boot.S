@@ -59,8 +59,6 @@ _kernel_init:
     adr     x10, vtable_el1
     msr     vbar_el1, x10
 
-    // initialize kernel service
-    bl      kernel_service_init
     // invoke main function
     bl      main
 

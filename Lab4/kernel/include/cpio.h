@@ -54,8 +54,8 @@ typedef struct file_info{
     unsigned int content_size;
 } file_info_t;
 
-void set_cpio_ptr(const void *cpio_ptr);
-void* get_cpio_ptr(void);
+void* get_cpio_begin_ptr(void);
+void *get_cpio_end_ptr(void);
 
 #define CPIO_SUCCESS             0
 #define CPIO_ITER_MAGIC_ERROR    1

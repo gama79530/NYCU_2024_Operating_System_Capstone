@@ -33,6 +33,8 @@ static void command_ls(void);
 static void command_cat(void);
 static void command_exec(void);
 static void command_timer(void);
+static void command_malloc(void);
+static void command_free(void);
 
 // for command_mailbox
 void get_board_revision(void);
@@ -129,6 +131,10 @@ static void execute_command(void){
             command_exec();
         }else if(!strncmp(tokens[0], "timer", TOKEN_MAX_LEN)){
             command_timer();
+        }else if(!strncmp(tokens[0], "malloc", TOKEN_MAX_LEN)){
+            command_malloc();
+        }else if(!strncmp(tokens[0], "free", TOKEN_MAX_LEN)){
+            command_free();
         }else{
             uart_puts("Unsupported command: ");
             uart_putln(buffer);
@@ -159,6 +165,8 @@ static void command_help(void){
     uart_putln("cat*\t: Display the file content in ramdisk.");
     uart_putln("exec*\t: Execute a program in Ramdisk.");
     uart_putln("timer*\t: Display the number of seconds since booting and trigger a delayed timer interrupt.");
+    uart_putln("malloc*\t: Allocates and returns a pointer to the allocated memory");
+    uart_putln("free*\t: Deallocated memory.");
 }
 
 static void command_hello(void){
@@ -201,11 +209,11 @@ static void command_ls(void){
 
     is_help(
         uart_putln("<default>\t: Display all file names in the ramdisk.");
-        uart_putln("[file name]\t: Check whether the file is in the ramdisk. You can specify multiple files at once.");
+        uart_putln("{file name}\t: Check whether the file is in the ramdisk. You can specify multiple files at once.");
     );
 
     if(token_num == 1){
-        current = get_cpio_ptr();
+        current = get_cpio_begin_ptr();
         while(current != 0){
             // extract file info
             if(cpio_iter(&current, &info)){ // abnormal iter 
@@ -216,7 +224,7 @@ static void command_ls(void){
     }else{
         for(int i = 1; i < token_num; i++){
             is_match = 0;
-            current = get_cpio_ptr();
+            current = get_cpio_begin_ptr();
             while(current != 0 && !is_match){
                 // extract file info
                 if(cpio_iter(&current, &info)){ // abnormal iter 
@@ -249,7 +257,7 @@ static void command_cat(void){
         uart_putln("You must provide at least one file name.");
     }else{
         for(int i = 1; i < token_num; i++){
-            current = get_cpio_ptr();
+            current = get_cpio_begin_ptr();
             while(current != 0){
                 // extract file info
                 if(cpio_iter(&current, &info)){ // abnormal iter 
@@ -283,7 +291,7 @@ static void command_exec(void){
     }else if(token_num > 2){
         uart_putln("You cannot assign more than one program at a time.");
     }else{
-        current = get_cpio_ptr();
+        current = get_cpio_begin_ptr();
         while(current != NULL){
             // extract file info
             if(cpio_iter(&current, &info)){ // abnormal iter 
@@ -339,6 +347,21 @@ static void command_timer(void){
     uart_putln(".");
     timer_add_timeout_event(duration, msg);
 }
+
+static void command_malloc(void){
+    is_help(
+        uart_putln("{size}\t: The size of the memory in bytes that will be allocated.");
+    );
+    uart_putln("command_malloc");
+}
+
+static void command_free(void){
+    is_help(
+        uart_putln("{address}\t: The address of the memory that will be deallocated.");
+    );
+    uart_putln("command_free");
+}
+
 
 void get_board_revision(void){
     mbox[0] = 7 * 4; // buffer size in bytes
