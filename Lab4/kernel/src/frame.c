@@ -29,7 +29,7 @@ extern void *startup_heap_boundary;
 */
 
 typedef struct buddy_sys_metadata{
-    uint8_t     is_build;
+    bool        is_build;
     void        *base_ptr;
     void        *boundary_ptr;
     uint64_t    frame_num;
@@ -44,6 +44,7 @@ int buddy_group(uint64_t *frame_idx_ptr, bool print_msg);
 int buddy_ungroup(uint64_t frame_idx, bool print_msg);
 
 void show_memory_info();
+void show_frame_state(uint64_t frame_idx);
 uint64_t addr_to_idx(void *addr);
 void *idx_to_addr(uint64_t idx);
 
@@ -60,7 +61,7 @@ int buddy_system_init(){
         return -1;    
     }
 
-    metadata->is_build = 0;
+    metadata->is_build = false;
 
     /* hard coding but they can be replaced by the value in dtb */
     metadata->base_ptr = (void*)MEMORY_BASE;
@@ -82,7 +83,7 @@ int buddy_system_init(){
         return -1;    
     }
     for(int i = 0; i < BUDDY_ORDER_LIMIT; i++){
-        metadata->buddy_lists[i].prev = metadata->buddy_lists[i].next = metadata->buddy_lists + i;
+        metadata->buddy_lists[i].prev = metadata->buddy_lists[i].next = &metadata->buddy_lists[i];
     }
 
     /* preserve memory */
@@ -95,11 +96,20 @@ int buddy_system_init(){
     /* build buddy system */
     for(uint8_t order = 0; order < BUDDY_ORDER_LIMIT; order++){
         for(uint64_t frame_idx = 0; frame_idx < metadata->frame_num; frame_idx += (1 << order)){
-            buddy_group(&frame_idx, true);
+            buddy_group(&frame_idx, false);
         }
     }
 
-
+    int32_t order;
+    list_head_t *node;
+    for(uint64_t frame_idx = 0; frame_idx < metadata->frame_num; frame_idx++){
+        order = metadata->buddy_array[frame_idx];
+        if(order >= 0){
+            node = (list_head_t*)idx_to_addr(frame_idx);
+            list_add(node, metadata->buddy_lists[order].prev, &metadata->buddy_lists[order]);
+        }
+    }
+    metadata->is_build = true;
 
 #if PRINT_MSG == 1
     show_memory_info();
@@ -253,4 +263,21 @@ int buddy_ungroup(uint64_t frame_idx, bool print_msg){
     }
 
     return BUDDY_UNGROUP_SUCCESS;
+}
+
+void show_frame_state(uint64_t frame_idx){
+    uart_poll_puts("The state of frame ");
+    uart_poll_puts(uint_to_dec_str(frame_idx));
+    uart_poll_puts(" is ");
+
+    if(metadata->buddy_array[frame_idx] == STATE_ALLOCATED){
+        uart_poll_putln(" STATE_ALLOCATED");
+    }else if(metadata->buddy_array[frame_idx] == STATE_BUDDY){
+        uart_poll_putln(" STATE_BUDDY");
+    }else if(metadata->buddy_array[frame_idx] == STATE_PRESERVED){
+        uart_poll_putln(" STATE_PRESERVED");
+    }else{    
+        uart_poll_puts(" at order ");
+        uart_poll_putln(uint_to_dec_str(metadata->buddy_array[frame_idx]));
+    }
 }
