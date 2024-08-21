@@ -49,7 +49,7 @@ uint64_t addr_to_idx(void *addr);
 void *idx_to_addr(uint64_t idx);
 
 int buddy_system_init(){
-#if PRINT_MSG == 1
+#if PRINT_FRAME_MSG == 1
     uart_poll_putln("");
     uart_poll_putln("********** buddy_system_init **********");
 #endif
@@ -111,7 +111,7 @@ int buddy_system_init(){
     }
     metadata->is_build = true;
 
-#if PRINT_MSG == 1
+#if PRINT_FRAME_MSG == 1
     show_memory_info();
 #endif
 
@@ -135,7 +135,7 @@ void buddy_preserve_memory(void *base_ptr, void *boundary_ptr, char *msg){
         metadata->buddy_array[i] = STATE_PRESERVED;
     }
 
-#if PRINT_MSG == 1
+#if PRINT_FRAME_MSG == 1
     if(msg != NULL){
         uart_poll_puts(msg);
     }
@@ -174,6 +174,18 @@ void show_memory_info(){
 
     uart_poll_puts("frame_num\t: " );
     uart_poll_putln(uint_to_dec_str(metadata->frame_num));
+    uart_poll_putln("");
+
+    uint64_t frame_idx = 0;
+    while(frame_idx < metadata->frame_num){
+
+        show_frame_state(frame_idx);
+        if(metadata->buddy_array[frame_idx] >= 0){
+            frame_idx += (1 << metadata->buddy_array[frame_idx]);
+        }else{
+            frame_idx++;
+        }
+    }
     
     uart_poll_putln("");
 }
@@ -270,14 +282,14 @@ void show_frame_state(uint64_t frame_idx){
     uart_poll_puts(uint_to_dec_str(frame_idx));
     uart_poll_puts(" is ");
 
-    if(metadata->buddy_array[frame_idx] == STATE_ALLOCATED){
+    if(metadata->buddy_array[frame_idx] == (int8_t)STATE_ALLOCATED){
         uart_poll_putln(" STATE_ALLOCATED");
-    }else if(metadata->buddy_array[frame_idx] == STATE_BUDDY){
+    }else if(metadata->buddy_array[frame_idx] == (int8_t)STATE_BUDDY){
         uart_poll_putln(" STATE_BUDDY");
-    }else if(metadata->buddy_array[frame_idx] == STATE_PRESERVED){
+    }else if(metadata->buddy_array[frame_idx] == (int8_t)STATE_PRESERVED){
         uart_poll_putln(" STATE_PRESERVED");
     }else{    
-        uart_poll_puts(" at order ");
+        uart_poll_puts("at order ");
         uart_poll_putln(uint_to_dec_str(metadata->buddy_array[frame_idx]));
     }
 }

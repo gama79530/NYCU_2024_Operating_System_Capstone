@@ -2,7 +2,7 @@
 #define FRAME_H
 #include "types.h"
 
-#define PRINT_MSG           1
+#define PRINT_FRAME_MSG     1
 #define MEMORY_BASE         0x00000000
 #define MEMORY_BOUNDARY     0x3C000000
 
