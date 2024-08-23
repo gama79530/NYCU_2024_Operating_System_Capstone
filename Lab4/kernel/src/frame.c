@@ -4,14 +4,14 @@
 #include "util.h"
 #include "string.h"
 
-#define _memory_base        (((buddy_sys_metadata_t*)metadata)->memory_base)
-#define _memory_boundary    (((buddy_sys_metadata_t*)metadata)->memory_boundary)
-#define _frame_order        (((buddy_sys_metadata_t*)metadata)->frame_order)
-#define _frame_size         (((buddy_sys_metadata_t*)metadata)->frame_size)
-#define _frame_num          (((buddy_sys_metadata_t*)metadata)->frame_num)
-#define _buddy_order_limit  (((buddy_sys_metadata_t*)metadata)->buddy_order_limit)
-#define _buddy_array        (((buddy_sys_metadata_t*)metadata)->buddy_array)
-#define _buddy_lists        (((buddy_sys_metadata_t*)metadata)->buddy_lists)
+#define _memory_base        (_metadata->memory_base)
+#define _memory_boundary    (_metadata->memory_boundary)
+#define _frame_order        (_metadata->frame_order)
+#define _frame_size         (_metadata->frame_size)
+#define _frame_num          (_metadata->frame_num)
+#define _buddy_order_limit  (_metadata->buddy_order_limit)
+#define _buddy_array        (_metadata->buddy_array)
+#define _buddy_lists        (_metadata->buddy_lists)
 
 #define BUDDY_STATE_PRESERVED     0x80
 #define BUDDY_STATE_ALLOCATED     0x81
@@ -28,20 +28,24 @@ typedef struct buddy_sys_metadata{
     list_head_t *buddy_lists;
 } buddy_sys_metadata_t;
 
-static bool buddy_group(void *metadata, uint64_t *frame_idx_ptr, bool print_msg);
-static bool buddy_ungroup(void *metadata, uint64_t frame_idx, bool print_msg);
+void* buddy_frame_idx_to_addr(void *metadata, uint64_t frame_idx);
+uint64_t buddy_addr_to_frame_idx(void *metadata, void *addr);
+static bool buddy_group(void *metadata, uint64_t *frame_idx_ptr, bool verbose);
+static int32_t calculate_buddy_order(void *metadata, uint64_t frame_idx);
 
 void* buddy_system_init(void *memory_base, void *memory_boundary, uint8_t frame_order, uint8_t buddy_order_limit, startup_malloc_callback_t malloc_cb, startup_preserve_memory_callback_t preserve_cb){
     void *metadata = NULL;
+    buddy_sys_metadata_t *_metadata = NULL;
     list_head_t *temp = NULL;
-
-    /* initialize buddy system metadata */
+    
+    /* initialize buddy system metadata */    
     metadata = malloc_cb(sizeof(buddy_sys_metadata_t));
     if(metadata == NULL){
         uart_poll_putln("buddy_system_init: metadata allocation fail.");
         return NULL;
     }
 
+    _metadata = (buddy_sys_metadata_t*)metadata;
     _memory_base = memory_base;
     _memory_boundary = memory_boundary;
     _frame_order = frame_order;
@@ -55,6 +59,10 @@ void* buddy_system_init(void *memory_base, void *memory_boundary, uint8_t frame_
         uart_poll_putln("buddy_system_init: buddy_array allocation fail.");
         return NULL;    
     }
+    for(uint32_t i = 0; i < _frame_num; i++){
+        _buddy_array[i] = 0;
+    }
+
     if(NULL == (temp = (list_head_t*)malloc_cb(_buddy_order_limit * sizeof(list_head_t)))){
         uart_poll_putln("buddy_system_init: buddy_lists allocation fail.");
         return NULL;    
@@ -68,7 +76,7 @@ void* buddy_system_init(void *memory_base, void *memory_boundary, uint8_t frame_
 
     /* build buddy system */
     for(uint8_t buddy_order = 0; buddy_order < _buddy_order_limit; buddy_order++){
-        for(uint64_t frame_idx = 0; frame_idx < _frame_num; frame_idx += (1 << buddy_order)){
+        for(uint64_t frame_idx = 0; frame_idx < _frame_num; frame_idx += (2 << buddy_order)){
             buddy_group(metadata, &frame_idx, false);
         }
     }
@@ -80,13 +88,16 @@ void* buddy_system_init(void *memory_base, void *memory_boundary, uint8_t frame_
         buddy_order = _buddy_array[frame_idx];
         /* this frame is not a head of buddy groups */
         if(buddy_order < 0) continue;
+        
         node = (list_head_t*)buddy_frame_idx_to_addr(metadata, frame_idx);
         list_add(node, _buddy_lists[buddy_order].prev, &_buddy_lists[buddy_order]);
     }
+
     return metadata;
 }
 
 bool buddy_preserve_memory(void *metadata, void *memory_base, void *memory_boundary, char *msg){
+    buddy_sys_metadata_t *_metadata = (buddy_sys_metadata_t*)metadata;
     uint64_t begin_idx, end_idx;
     
     if(NULL != _buddy_lists){
@@ -96,7 +107,7 @@ bool buddy_preserve_memory(void *metadata, void *memory_base, void *memory_bound
 
     /* preserve range check */
     if((uint64_t)memory_base < (uint64_t)_memory_base || (uint64_t)memory_boundary > (uint64_t)_memory_boundary){
-        uart_poll_puts("buddy_preserve_memory: out of memory space");
+        uart_poll_putln("buddy_preserve_memory: out of memory space");
         return false;
     }
 
@@ -124,6 +135,7 @@ bool buddy_preserve_memory(void *metadata, void *memory_base, void *memory_bound
 }
 
 void buddy_show_layout(void *metadata){
+    buddy_sys_metadata_t *_metadata = (buddy_sys_metadata_t*)metadata;
     uart_poll_putln("");
     uart_poll_putln("********** show_memory_info **********");
     uart_poll_puts("memory_base\t: 0x");
@@ -143,22 +155,31 @@ void buddy_show_layout(void *metadata){
     uint64_t frame_idx = 0;
     while(frame_idx < _frame_num){
         buddy_show_frame_state(metadata, frame_idx);
-        frame_idx += (_buddy_array[frame_idx] >= 0 ? 1 << _buddy_array[frame_idx] : 1);
+
+        if((int8_t)BUDDY_STATE_ALLOCATED == _buddy_array[frame_idx]){
+            frame_idx += (1 << calculate_buddy_order(metadata, frame_idx));
+        }else if(_buddy_array[frame_idx] >= 0){
+            frame_idx += (1 << _buddy_array[frame_idx]);
+        }else{
+            frame_idx++;
+        }
+
     }
     
     uart_poll_putln("");
 }
 
 void buddy_show_frame_state(void *metadata, uint64_t frame_idx){
+    buddy_sys_metadata_t *_metadata = (buddy_sys_metadata_t*)metadata;
     uart_poll_puts("The state of frame ");
     uart_poll_puts(uint_to_dec_str(frame_idx));
     uart_poll_puts(" is ");
 
-    if((int8_t)BUDDY_STATE_ALLOCATED == _buddy_array[frame_idx]){
+    if(_buddy_array[frame_idx] == (int8_t)BUDDY_STATE_ALLOCATED){
         uart_poll_putln("STATE_ALLOCATED");
-    }else if((int8_t)BUDDY_STATE_BUDDY == _buddy_array[frame_idx]){
+    }else if(_buddy_array[frame_idx] == (int8_t)BUDDY_STATE_BUDDY){
         uart_poll_putln("BUDDY_STATE_BUDDY");
-    }else if((int8_t)BUDDY_STATE_PRESERVED == _buddy_array[frame_idx]){
+    }else if(_buddy_array[frame_idx] == (int8_t)BUDDY_STATE_PRESERVED){
         uart_poll_putln("BUDDY_STATE_PRESERVED");
     }else{
         uart_poll_puts("at order ");
@@ -166,22 +187,93 @@ void buddy_show_frame_state(void *metadata, uint64_t frame_idx){
     }
 }
 
+void* frame_alloc(void *metadata, uint8_t buddy_order){
+    buddy_sys_metadata_t *_metadata = (buddy_sys_metadata_t*)metadata;
+    void *ret_frame_addr = NULL;
+    uint64_t ret_frame_idx;
+
+    // find contiguous frame directly
+    if(!list_is_empty(&_buddy_lists[buddy_order])){
+        list_head_t *node = _buddy_lists[buddy_order].next;
+        list_remove(node);
+        ret_frame_addr = (void*)node;
+        ret_frame_idx = buddy_addr_to_frame_idx(metadata, ret_frame_addr);
+        _buddy_array[ret_frame_idx] = BUDDY_STATE_ALLOCATED;
+
+#if VERBOSE == true
+        uart_poll_puts("find contiguous frame with order ");
+        uart_poll_puts(uint_to_dec_str(buddy_order));
+        uart_poll_putln(" directly");
+#endif
+    }else if(buddy_order != _buddy_order_limit - 1){
+        ret_frame_addr = frame_alloc(metadata, buddy_order + 1);
+        // the memory space is not exhausted    
+        if(ret_frame_addr != NULL){
+            ret_frame_idx = buddy_addr_to_frame_idx(metadata, ret_frame_addr);
+
+            uint64_t buddy_frame_idx = ret_frame_idx ^ (1 << buddy_order);
+            void *buddy_frame_addr = buddy_frame_idx_to_addr(metadata, buddy_frame_idx);
+
+            _buddy_array[buddy_frame_idx] = buddy_order;
+            list_add((list_head_t*)buddy_frame_addr, _buddy_lists[buddy_order].prev, &_buddy_lists[buddy_order]);
+
+#if VERBOSE == true
+        uart_poll_puts("find contiguous frame with order ");
+        uart_poll_puts(uint_to_dec_str(buddy_order));
+        uart_poll_puts(" by split frame with order ");
+        uart_poll_putln(uint_to_dec_str(buddy_order + 1));
+#endif
+        }
+    }
+
+    return ret_frame_addr;
+}
+
+void frame_free(void *metadata, void *ptr){
+    buddy_sys_metadata_t *_metadata = (buddy_sys_metadata_t*)metadata;
+
+    /* out of range */
+    if((uint64_t)ptr < (uint64_t)_memory_base || (uint64_t)ptr >= (uint64_t)_memory_boundary){
+        return;
+    }
+
+    uint64_t frame_idx = buddy_addr_to_frame_idx(metadata, ptr);
+#if VERBOSE == true
+    uart_poll_puts("return frame ");
+    uart_poll_putln(uint_to_dec_str(frame_idx));
+#endif
+
+    /* find buddy_order */
+    int32_t buddy_order = calculate_buddy_order(metadata, frame_idx);
+
+    /* return into buddy system */
+    _buddy_array[frame_idx] = buddy_order;
+    list_add((list_head_t*)ptr, _buddy_lists[buddy_order].prev, &_buddy_lists[buddy_order]);
+    while(buddy_group(metadata, &frame_idx, VERBOSE));
+}
+
 void* buddy_frame_idx_to_addr(void *metadata, uint64_t frame_idx){
-    return _memory_base + (frame_idx << _frame_order);
+    buddy_sys_metadata_t *_metadata = (buddy_sys_metadata_t*)metadata;
+
+    return frame_idx < _frame_num ? _memory_base + (frame_idx << _frame_order) : NULL;
 }
 
 uint64_t buddy_addr_to_frame_idx(void *metadata, void *addr){
-    return ((uint64_t)addr - (uint64_t)_memory_base) >> _frame_order;
+    buddy_sys_metadata_t *_metadata = (buddy_sys_metadata_t*)metadata;
+    
+    return ((uint64_t)addr >= (uint64_t)_memory_base && (uint64_t)addr < (uint64_t)_memory_boundary) ? 
+           ((uint64_t)addr - (uint64_t)_memory_base) >> _frame_order : 0;
 }
 
-static bool buddy_group(void *metadata, uint64_t *frame_idx_ptr, bool print_msg){
+static bool buddy_group(void *metadata, uint64_t *frame_idx_ptr, bool verbose){
+    buddy_sys_metadata_t *_metadata = (buddy_sys_metadata_t*)metadata;
     uint64_t frame_idx, buddy_idx;
     int32_t buddy_order;
     
     frame_idx = *frame_idx_ptr;
     buddy_order = _buddy_array[frame_idx];
 
-    if(buddy_order < 0 || buddy_order >= _buddy_order_limit - 1){
+    if(*frame_idx_ptr >= _frame_num || buddy_order < 0 || buddy_order >= _buddy_order_limit - 1){
         return false;
     }
 
@@ -209,7 +301,7 @@ static bool buddy_group(void *metadata, uint64_t *frame_idx_ptr, bool print_msg)
 
     *frame_idx_ptr = frame_idx;
 
-    if(print_msg){
+    if(verbose){
         uart_poll_puts("group frame ");
         uart_poll_puts(uint_to_dec_str(frame_idx));
         uart_poll_puts(" and frame ");
@@ -221,33 +313,28 @@ static bool buddy_group(void *metadata, uint64_t *frame_idx_ptr, bool print_msg)
     return true;
 }
 
-static bool buddy_ungroup(void *metadata, uint64_t frame_idx, bool print_msg){
-    int32_t buddy_order = _buddy_array[frame_idx] - 1;
+static int32_t calculate_buddy_order(void *metadata, uint64_t frame_idx){
+    buddy_sys_metadata_t *_metadata = (buddy_sys_metadata_t*)metadata;
+    int32_t buddy_order = 0;
+    uint64_t buddy_idx;
 
-    if(buddy_order < 0){
-        return false;
+    if(frame_idx >= _frame_num || _buddy_array[frame_idx] == BUDDY_STATE_PRESERVED){
+        return -1;
+    }else if(_buddy_array[frame_idx] == BUDDY_STATE_BUDDY){
+        do{
+            buddy_order++;
+            buddy_idx = frame_idx ^ (1 << buddy_order);
+            if(frame_idx > buddy_idx){
+                swap(frame_idx, buddy_idx);
+            }
+        }while(_buddy_array[frame_idx] == BUDDY_STATE_BUDDY);
+    }else{
+        buddy_idx = frame_idx ^ (1 << buddy_order);
+        while(buddy_order < _buddy_order_limit - 1 && _buddy_array[buddy_idx] == (int8_t)BUDDY_STATE_BUDDY){
+            buddy_order++;
+            buddy_idx = frame_idx ^ (1 << buddy_order);
+        }
     }
-
-    uint64_t buddy_idx = frame_idx ^ (1 << buddy_order);
-    _buddy_array[frame_idx] = _buddy_array[buddy_idx] = buddy_order;
-
-    /* processing buddy_lists */
-    list_head_t *frame_node = (list_head_t*)buddy_frame_idx_to_addr(metadata, frame_idx);
-    list_head_t *buddy_node = (list_head_t*)buddy_frame_idx_to_addr(metadata, buddy_idx);
-
-    list_remove(frame_node);
-    list_add(frame_node, _buddy_lists[buddy_order].prev, &_buddy_lists[buddy_order]);
-    list_add(buddy_node, _buddy_lists[buddy_order].prev, &_buddy_lists[buddy_order]);
-
-    if(print_msg){
-        uart_poll_puts("ungroup to make two new contiguous buddy with order ");
-        uart_poll_puts(uint_to_dec_str(buddy_order));
-        uart_poll_puts(" at frame ");
-        uart_poll_puts(uint_to_dec_str(frame_idx));
-        uart_poll_puts(" and frame ");
-        uart_poll_putln(uint_to_dec_str(buddy_idx));
-    }
-
-    return true;
+    
+    return buddy_order;
 }
-
