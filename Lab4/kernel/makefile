@@ -11,7 +11,8 @@ DTB = -dtb ../loader/bcm2710-rpi-3-b.dtb
 
 all: kernel8.img
 
-debug: CFLAGS += -g ASMCFLAGS += -g
+debug: CFLAGS += -g 
+debug: ASMCFLAGS += -g
 debug: kernel8.img
 
 $(BUILD_DIR)/%_c.o: $(SRC_DIR)/%.c

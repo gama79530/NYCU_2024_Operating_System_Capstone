@@ -13,6 +13,7 @@ static uint32_t rx_head = 0;
 static uint32_t rx_tail = 0;
 static uint32_t tx_head = 0;
 static uint32_t tx_tail = 0;
+static bool _is_irq_set = false;
 
 void uart_init(void){
     register uint32_t selector;
@@ -44,10 +45,12 @@ void uart_init(void){
 
 void uart_enable_irqs_1(void){
     put32(ENABLE_IRQs_1, IRQ_AUX_INT);
+    _is_irq_set = true;
 }
 
 void uart_disable_irqs_1(void){
     put32(DISABLE_IRQs_1, IRQ_AUX_INT);
+    _is_irq_set = false;
 }
 
 void uart_rx_set(void){
@@ -223,7 +226,6 @@ void uart_put_to_tx_buffer(char c){
 void handler_uart_rx(void){
     uart_disable_irqs_1();
     uart_put_to_rx_buffer(uart_poll_getb());
-    // uart_rx_clr();
     uart_enable_irqs_1();
 }
 
@@ -233,4 +235,8 @@ void handler_uart_tx(void){
         uart_poll_putc(uart_get_from_tx_buffer());
     }
     uart_enable_irqs_1();
+}
+
+bool is_irq_set(){
+    return _is_irq_set;
 }

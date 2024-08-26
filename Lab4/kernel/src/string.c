@@ -67,8 +67,8 @@ char* uint_to_dec_str(uint64_t i){
 }
 
 
-uint32_t dec_str_to_uint(char *s){
-    unsigned int num = 0;
+uint64_t dec_str_to_uint(char *s){
+    uint64_t num = 0;
     int len = str_len(s);
         
     for(int i = 0; i < len; i++){
