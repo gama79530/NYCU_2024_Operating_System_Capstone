@@ -20,4 +20,10 @@ int str_len(const char *s);
 void strcpy(const char *src, char *dest);
 void strncpy(const char *src, char *dest, uint32_t len);
 
+char char_to_upper(char c);
+char char_to_lower(char c);
+
+void to_upper(char *s);
+void to_lower(char *s);
+
 #endif

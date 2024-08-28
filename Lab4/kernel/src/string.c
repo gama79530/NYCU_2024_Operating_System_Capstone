@@ -31,16 +31,14 @@ char* long_to_hex_str(long l){
     return buffer;
 }
 
-#define hex_str_to_num(c, n, bytes){\
-    for(int i = 0; i < (2 * bytes) && (c)[i] != '\0'; i++){\
-        (n) <<= 4;\
-        (n) |= ((c)[i] > '9' ? (c)[i] - 'A' + 10  : (c)[i] - '0');\
-    }\
-}
-
 uint64_t hex_str_to_uint(char *s){
     uint64_t n = 0;
-    hex_str_to_num(s, n, 4);
+    
+    to_upper(s);
+    for(int i = 0; i < 16 && s[i] != '\0'; i++){
+        n <<= 4;
+        n |= (s[i] > '9' ? s[i] - 'A' + 10 : s[i] - '0');
+    }
 
     return n;
 }
@@ -131,5 +129,35 @@ void strncpy(const char *src, char *dest, uint32_t len){
         }
         src++;
         dest++;
+    }
+}
+
+char char_to_upper(char c){
+    if(c >= 'a' && c <= 'z'){
+        c &= ~0x20;
+    }
+
+    return c;
+}
+
+char char_to_lower(char c){
+    if(c >= 'A' && c <= 'Z'){
+        c &= ~0x20;
+    }
+
+    return c;
+}
+
+void to_upper(char *s){
+    while(*s != '\0'){
+        *s = char_to_upper(*s);
+        s++;
+    }
+}
+
+void to_lower(char *s){
+    while(*s != '\0'){
+        *s = char_to_lower(*s);
+        s++;
     }
 }
