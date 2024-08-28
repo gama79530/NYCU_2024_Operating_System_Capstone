@@ -72,9 +72,9 @@ void cpio_callback(uint32_t token, const char *name, const void *data, uint32_t 
 int cpio_init(void){
     int ret = fdt_traverse(cpio_callback);
     if(ret){
-        uart_poll_putln("cpio_init fail.");
+        uart_putln("cpio_init fail.");
     }else{
-        uart_poll_putln("cpio_init success.");
+        uart_putln("cpio_init success.");
     }
 
     return ret;

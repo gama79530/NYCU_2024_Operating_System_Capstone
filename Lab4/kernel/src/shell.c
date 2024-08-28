@@ -5,6 +5,7 @@
 #include "power.h"
 #include "cpio.h"
 #include "timer.h"
+#include "memory.h"
 
 static char buffer[BUFFER_MAX_SIZE] = {0};
 static char tokens[TOKEN_NUM_MAX][TOKEN_MAX_LEN] = {0};
@@ -352,14 +353,36 @@ static void command_malloc(void){
     is_help(
         uart_putln("{size}\t: The size of the memory in bytes that will be allocated.");
     );
-    uart_putln("command_malloc");
+    
+    uint64_t size = dec_str_to_uint(tokens[1]);
+
+    // void *ptr = malloc(size);
+    // debug
+    void *ptr = memory_alloc(size);
+
+    uart_puts("malloc size ");
+    uart_puts(tokens[1]);
+    uart_puts(" bytes at 0x");
+    uart_putln(long_to_hex_str((uint64_t)ptr) + 8);
 }
 
 static void command_free(void){
     is_help(
-        uart_putln("{address}\t: The address of the memory that will be deallocated.");
+        uart_putln("{address}\t: The memory address in hex format that will be deallocated.");
     );
-    uart_putln("command_free");
+
+    if(strncmp(tokens[1], "0x", 2)){
+        uart_putln("address should be in hex format.");
+        return;
+    }
+
+    void *addr = (void*)hex_str_to_uint(tokens[1] + 2);
+    // free(addr);
+    // debug
+    memory_free(addr);
+
+    uart_puts("free memory at ");
+    uart_putln(tokens[1]);
 }
 
 

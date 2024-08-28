@@ -3,9 +3,9 @@
 #include "peripheral.h"
 
 #define RX_BUFFER_EMPTY    (rx_head == rx_tail)
-#define RX_BUFFER_FULL     (rx_head == (rx_tail + 1) % RX_BUFFER_SIZE)
+#define RX_BUFFER_FULL     (rx_head == ((rx_tail + 1) & (RX_BUFFER_SIZE - 1)))
 #define TX_BUFFER_EMPTY    (tx_head == tx_tail)
-#define TX_BUFFER_FULL     (tx_head == (tx_tail + 1) % TX_BUFFER_SIZE)
+#define TX_BUFFER_FULL     (tx_head == ((tx_tail + 1) & (TX_BUFFER_SIZE - 1)))
 
 static char rx_buffer[RX_BUFFER_SIZE] = {0};
 static char tx_buffer[TX_BUFFER_SIZE] = {0};
@@ -13,7 +13,7 @@ static uint32_t rx_head = 0;
 static uint32_t rx_tail = 0;
 static uint32_t tx_head = 0;
 static uint32_t tx_tail = 0;
-static bool _is_irq_set = false;
+static bool _is_irq_1_enable = false;
 
 void uart_init(void){
     register uint32_t selector;
@@ -44,13 +44,13 @@ void uart_init(void){
 }
 
 void uart_enable_irqs_1(void){
+    _is_irq_1_enable = true;
     put32(ENABLE_IRQs_1, IRQ_AUX_INT);
-    _is_irq_set = true;
 }
 
 void uart_disable_irqs_1(void){
+    _is_irq_1_enable = false;
     put32(DISABLE_IRQs_1, IRQ_AUX_INT);
-    _is_irq_set = false;
 }
 
 void uart_rx_set(void){
@@ -148,12 +148,10 @@ char uart_async_getc(void){
 }
 
 void uart_async_putc(char c){
-    if(TX_BUFFER_FULL){
+    while(TX_BUFFER_FULL){
         uart_tx_set();
-        while(!TX_BUFFER_EMPTY){
-            asm volatile("nop");
-        }
     }
+
     uart_put_to_tx_buffer(c);
     uart_tx_set();
 }
@@ -237,6 +235,6 @@ void handler_uart_tx(void){
     uart_enable_irqs_1();
 }
 
-bool is_irq_set(){
-    return _is_irq_set;
+bool is_irq_1_enable(){
+    return _is_irq_1_enable;
 }

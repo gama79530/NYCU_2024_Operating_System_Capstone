@@ -38,8 +38,8 @@ char* long_to_hex_str(long l){
     }\
 }
 
-uint32_t hex_str_to_uint(char *s){
-    uint32_t n = 0;
+uint64_t hex_str_to_uint(char *s){
+    uint64_t n = 0;
     hex_str_to_num(s, n, 4);
 
     return n;

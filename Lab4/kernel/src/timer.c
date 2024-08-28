@@ -131,15 +131,15 @@ timer_event_t* get_blank_event(){
 }
 
 void timer_event_callback(const char *msg){
-    uart_poll_putc('\r');
+    uart_putc('\r');
     if(str_len(msg)){
-        uart_poll_putln(msg);
+        uart_putln(msg);
     }else{
-        uart_poll_puts("<Timer>: The number of seconds since booting is ");
-        uart_poll_puts(uint_to_dec_str(timer_get_current_time()));
-        uart_poll_putln(".");
+        uart_puts("<Timer>: The number of seconds since booting is ");
+        uart_puts(uint_to_dec_str(timer_get_current_time()));
+        uart_putln(".");
     }
-    uart_poll_puts("$ ");
+    uart_puts("$ ");
 }
 
 

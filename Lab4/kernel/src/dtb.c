@@ -17,14 +17,14 @@ void set_dtb_ptr(void *dtb_ptr){
         _dtb_struct_block_ptr = NULL;
         _dtb_string_block_ptr = NULL;
         _dtb_struct_block_size = 0;
-        uart_poll_putln("set_dtb_ptr fail.");
+        uart_putln("set_dtb_ptr fail.");
     }else{
         _dtb_ptr = dtb_ptr;
         _dtb_mem_rsv_block_ptr = _dtb_ptr + to_little_u32(header->off_mem_rsvmap);
         _dtb_struct_block_ptr = _dtb_ptr + to_little_u32(header->off_dt_struct);
         _dtb_string_block_ptr = _dtb_ptr + to_little_u32(header->off_dt_strings);
         _dtb_struct_block_size = to_little_u32(header->size_dt_struct);
-        uart_poll_putln("set_dtb_ptr success.");
+        uart_putln("set_dtb_ptr success.");
     }
 }
 

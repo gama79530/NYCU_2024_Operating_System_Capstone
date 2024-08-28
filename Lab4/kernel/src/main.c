@@ -4,37 +4,20 @@
 #include "cpio.h"
 #include "exception.h"
 #include "shell.h"
+#include "memory.h"
 
 int kernel_service_init(uint64_t x0){
-    int ret = 0;
-
     uart_init();
-
     set_dtb_ptr((void*)x0);
-    if((ret = cpio_init())) return ret;
-/* debug */
-#include "frame.h"
-#include "memory.h"
-void *metadata = buddy_system_init(
-    (void*)0x00000000,
-    (void*)0x3C000000,
-    12,
-    16,
-    startup_memory_alloc,
-    startup_memory_preserve
-);
-buddy_show_layout(metadata);
-/* debug */
+    if((cpio_init())) return -1;
+    if(memory_system_init()) return -1;
     enable_interrupt_all();
     uart_enable_irqs_1();
 
-    return ret;
+    return 0;
 }
 
 void main(uint64_t x0){
-    if(kernel_service_init(x0)){
-        return;
-    }
-
+    if(kernel_service_init(x0)) return;
     shell();
 }

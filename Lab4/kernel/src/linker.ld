@@ -16,10 +16,11 @@ SECTIONS
 
     . = ALIGN(0x10);
     kernel_end = .;
+    
 }
 
 bss_size = (bss_end - bss_begin) >> 3;
 
 /* 1 MB startup heap */
 heap_base = kernel_end;
-heap_boundary = kernel_end + 0x100000;
+heap_boundary = heap_base + 0x100000;
