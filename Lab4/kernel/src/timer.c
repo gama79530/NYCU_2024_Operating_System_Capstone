@@ -114,7 +114,9 @@ timer_event_t* get_blank_event(){
     
     disable_interrupt_all();
     if(list_is_empty(&blank_q)){
+        set_async_flag(false);
         event = (timer_event_t*)malloc(sizeof(timer_event_t));
+        set_async_flag(true);
     }else{
         event = (timer_event_t*)blank_q.next;
         list_remove(blank_q.next);

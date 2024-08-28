@@ -170,8 +170,8 @@ void memory_free(void *ptr){
 #endif
         frame_free(buddy_system_metadata, (void*)header);
     }else{
-        uint64_t chunk_size = CHUNK_MIN_SIZE << header->pool_idx;
 #if VERBOSE == true
+        uint64_t chunk_size = CHUNK_MIN_SIZE << header->pool_idx;
         uart_puts("memory_free: free a chunk with size = ");
         uart_puts(uint_to_dec_str(chunk_size));
         uart_putln(" bytes");
@@ -215,28 +215,4 @@ void startup_memory_preserve(void *metadata){
     buddy_preserve_memory(metadata, get_dtb_ptr(), get_dtb_ptr() + get_dtb_size(), "Preserve Device tree memory");
     buddy_preserve_memory(metadata, startup_heap_base, startup_heap_boundary, "Preserve startup heap");
     buddy_preserve_memory(metadata, (void*)((uint64_t)&kernel_begin - (1 << 10)), (void*)&kernel_begin, "Preserve at least 1 kb for kernel stack");
-}
-
-/* will be eliminated */
-static void *_alloc_cur = (void*)HEAP_BASE;
-
-void* memory_alloc_temp(uint32_t size){
-    void *ret_ptr = NULL;
-    if(!size){
-        return ret_ptr;
-    }
-
-    size = align_ceiling(size, 8);
-    if((uint64_t)(_alloc_cur + size) >= HEAP_TAIL){
-        return ret_ptr;
-    }
-
-    ret_ptr = _alloc_cur;
-    _alloc_cur += size;
-
-    return ret_ptr;
-}
-
-void memory_free_temp(void *ptr){
-    // TODO: finish this function.
 }

@@ -13,7 +13,7 @@ static uint32_t rx_head = 0;
 static uint32_t rx_tail = 0;
 static uint32_t tx_head = 0;
 static uint32_t tx_tail = 0;
-static bool _is_irq_1_enable = false;
+static bool _async_flag = false;
 
 void uart_init(void){
     register uint32_t selector;
@@ -44,12 +44,10 @@ void uart_init(void){
 }
 
 void uart_enable_irqs_1(void){
-    _is_irq_1_enable = true;
     put32(ENABLE_IRQs_1, IRQ_AUX_INT);
 }
 
 void uart_disable_irqs_1(void){
-    _is_irq_1_enable = false;
     put32(DISABLE_IRQs_1, IRQ_AUX_INT);
 }
 
@@ -235,6 +233,10 @@ void handler_uart_tx(void){
     uart_enable_irqs_1();
 }
 
-bool is_irq_1_enable(){
-    return _is_irq_1_enable;
+void set_async_flag(bool flag){
+    _async_flag = flag;
+}
+
+bool get_async_flag(){
+    return _async_flag;
 }

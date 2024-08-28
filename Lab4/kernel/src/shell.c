@@ -354,12 +354,15 @@ static void command_malloc(void){
         uart_putln("{size}\t: The size of the memory in bytes that will be allocated.");
     );
     
+    if(token_num < 2){
+        uart_putln("\"size\" is required.");
+        return;
+    }
+
     uint64_t size = dec_str_to_uint(tokens[1]);
 
-    // void *ptr = malloc(size);
-    // debug
-    void *ptr = memory_alloc(size);
-
+    void *ptr = malloc(size);
+    
     uart_puts("malloc size ");
     uart_puts(tokens[1]);
     uart_puts(" bytes at 0x");
@@ -371,15 +374,18 @@ static void command_free(void){
         uart_putln("{address}\t: The memory address in hex format that will be deallocated.");
     );
 
+    if(token_num < 2){
+        uart_putln("\"address\" is required.");
+        return;
+    }
+
     if(strncmp(tokens[1], "0x", 2)){
         uart_putln("address should be in hex format.");
         return;
     }
 
     void *addr = (void*)hex_str_to_uint(tokens[1] + 2);
-    // free(addr);
-    // debug
-    memory_free(addr);
+    free(addr);
 
     uart_puts("free memory at ");
     uart_putln(tokens[1]);

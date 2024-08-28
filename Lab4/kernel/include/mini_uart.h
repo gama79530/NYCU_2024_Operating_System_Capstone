@@ -3,12 +3,12 @@
 #include "types.h"
 
 // make synonym
-#define uart_getb       (is_irq_1_enable() ? uart_async_getb : uart_poll_getb)
-#define uart_getc       (is_irq_1_enable() ? uart_async_getc : uart_poll_getc)
-#define uart_putc       (is_irq_1_enable() ? uart_async_putc : uart_poll_putc)
-#define uart_puts       (is_irq_1_enable() ? uart_async_puts : uart_poll_puts)
-#define uart_putln      (is_irq_1_enable() ? uart_async_putln : uart_poll_putln)
-#define uart_put_mutiln (is_irq_1_enable() ? uart_async_put_mutiln : uart_poll_put_mutiln)
+#define uart_getb       (get_async_flag() ? uart_async_getb : uart_poll_getb)
+#define uart_getc       (get_async_flag() ? uart_async_getc : uart_poll_getc)
+#define uart_putc       (get_async_flag() ? uart_async_putc : uart_poll_putc)
+#define uart_puts       (get_async_flag() ? uart_async_puts : uart_poll_puts)
+#define uart_putln      (get_async_flag() ? uart_async_putln : uart_poll_putln)
+#define uart_put_mutiln (get_async_flag() ? uart_async_put_mutiln : uart_poll_put_mutiln)
 
 // #define uart_getb       uart_poll_getb
 // #define uart_getc       uart_poll_getc
@@ -25,11 +25,12 @@
 void uart_init(void);
 void uart_enable_irqs_1(void);
 void uart_disable_irqs_1(void);
-bool is_irq_1_enable();
 void uart_rx_set(void);
 void uart_rx_clr(void);
 void uart_tx_set(void);
 void uart_tx_clr(void);
+void set_async_flag(bool flag);
+bool get_async_flag();
 
 /* polling io */
 char uart_poll_getb(void);

@@ -13,6 +13,8 @@ int kernel_service_init(uint64_t x0){
     if(memory_system_init()) return -1;
     enable_interrupt_all();
     uart_enable_irqs_1();
+    set_async_flag(true);
+    uart_putln("");
 
     return 0;
 }

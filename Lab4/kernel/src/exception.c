@@ -80,7 +80,9 @@ void handler_sync_lower_aarch64_el1(void){
 irq_task_t* get_blank_task(void){
     irq_task_t *task = NULL;
     if(list_is_empty(&blank_q)){
+        set_async_flag(false);
         task = (irq_task_t*)malloc(sizeof(irq_task_t));
+        set_async_flag(true);
     }else{
         task = (irq_task_t*)blank_q.next;
         list_remove(blank_q.next);
