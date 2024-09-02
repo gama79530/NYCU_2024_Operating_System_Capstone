@@ -79,31 +79,6 @@ void waiting_task_exec(void){
 }
 
 void handler_irq_current_spelx_el1(void){
-    // if(get32(IRQ_PENDING_1) & IRQ_AUX_INT){         // UART IRQ
-    //     if(get32(AUX_MU_IIR) & AUX_IRQ_RX){         // Receiver holds valid byte
-    //         uart_putln("Receiver holds valid byte");
-    //         disable_irqs_1();
-    //         put_to_rx_buffer(uart_getb());
-    //         interrupt_rx_clr();
-    //         enable_irqs_1();
-    //     }else if(get32(AUX_MU_IIR) & AUX_IRQ_TX){   // Transmit holding register empty
-    //         uart_putln("Transmit holding register empty");
-    //         disable_irqs_1();
-    //         while(!tx_is_empty()){
-    //             uart_putc(get_from_tx_buffer());
-    //         }
-    //         interrupt_tx_clr();
-    //     }
-    // }else if(get32(CORE0_IRQ_SOURCE) & CNTPNSIRQ){  // timer IRQ
-    //     core_timer_disable();
-    //     uint64_t time = get_current_time();
-    //     uart_puts("\rThe number of seconds since booting is ");
-    //     uart_puts(uint_to_dec_str(time));
-    //     uart_putln(".");
-    //     uart_puts("$ ");
-    // }else{
-    //     uart_putln("handler_irq_current_sp_elx");
-    // }
     irq_task_t *task = NULL;
 
     if(get32(IRQ_PENDING_1) & IRQ_AUX_INT){         // UART IRQ
