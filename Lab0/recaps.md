@@ -2,7 +2,7 @@
 
 ## Description
 
-The following command is how to execute this Lab 0. You can find more explanation from [this](https://gama79530.github.io/3_Course/OperatingSystemCapstone/Lab0/index.html)
+The following command is how to execute this Lab 0. You can find more explanation from [here](https://gama79530.github.io/3_Course/OperatingSystemCapstone/Lab0/index.html).
 
 ```bash
 # install cross compiler on Ubuntu.
