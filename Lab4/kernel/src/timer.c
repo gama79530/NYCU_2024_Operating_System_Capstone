@@ -14,7 +14,7 @@ typedef struct timer_event{
     uint64_t                event_time;
     uint64_t                expired_time;
     timer_event_callback_t  callback;
-    char                msg[MSG_LEN_LIMIT];    
+    char                    msg[MSG_LEN_LIMIT];
 } timer_event_t;
 
 timer_event_t* get_blank_event(void);

@@ -19,3 +19,7 @@ all:
 
 help:
 	$(exec_uploader) --help
+
+run-on-board:
+	sudo screen /dev/ttyUSB0 115200
+	
