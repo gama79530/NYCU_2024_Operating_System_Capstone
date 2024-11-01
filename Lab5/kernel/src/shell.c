@@ -9,6 +9,7 @@
 #include "timer.h"
 #include "memory.h"
 #include "frame.h"
+#include "sched.h"
 
 static char buffer[SHELL_BUFFER_MAX_SIZE] = {0};
 static int len;
@@ -41,7 +42,7 @@ static void command_timer(void);
 static void command_malloc(void);
 static void command_free(void);
 static void command_memory_layout(void);
-// static void command_thread_demo(void);
+static void command_thread_demo(void);
 
 // for command_mailbox
 void get_board_revision(void);
@@ -51,7 +52,7 @@ void get_arm_memory_info(void);
 void cmd_timer_event_callback(void *arg);
 
 // for command_thread_demo
-// void demo(void);
+void demo_task(void *arg);
 
 void shell(void){
     printf("Welcome to the OGC shell. Use \"help\" for information on supported commands.\n");
@@ -147,8 +148,8 @@ static void execute_command(void){
             command_free();
         }else if(!strncmp(tokens[0], "memory_layout", SHELL_TOKEN_MAX_LEN)){
             command_memory_layout();
-    //     }else if(!strncmp(tokens[0], "thread_demo", SHELL_TOKEN_MAX_LEN)){
-    //         command_thread_demo();
+        }else if(!strncmp(tokens[0], "thread_demo", SHELL_TOKEN_MAX_LEN)){
+            command_thread_demo();
         }else{
             printf("Unsupported command: %s\n", buffer);
         }
@@ -403,11 +404,16 @@ static void command_memory_layout(void){
     buddy_sys_show_layout();
 }
 
-// static void command_thread_demo(void){
-//     int N = 3;
-//     for(int i = 0; i < N; i++)
-//         thread_create(demo, NULL);
-// }
+static void command_thread_demo(void){
+    int N = 3;
+    for(int i = 0; i < N; i++)
+        thread_create(demo_task, NULL);
+    
+    for(int i = 0; i < N; i++){
+        printf("main call schedule %d.\n", i);
+        schedule(); //debug
+    }
+}
 
 void get_board_revision(void){
     mbox[0] = 7 * 4; // buffer size in bytes
@@ -447,22 +453,12 @@ void get_arm_memory_info(void){
     }
 }
 
-// void demo(void){
-//     for(int i = 0; i < 10; i++){
-//         char *s_id = uint_to_dec_str(get_current_task()->thread_id);
-//         char *s_i = uint_to_dec_str(i);
-
-//         uart_puts("Thread id: ");
-//         uart_puts(s_id);
-//         uart_puts(" , i = ");
-//         uart_putln(s_i);
-
-//         wait_cycles(1000000);
-
-//         free(s_id);
-//         free(s_i);
-//     }
-// }
+void demo_task(void *arg){
+    for(int i = 0; i < 10; i++){
+        printf("Thread id: %d, i = %d\n", get_current_task()->pid, i);
+        schedule(); //debug
+    }
+}
 
 void cmd_timer_event_callback(void *arg){
     printf("\r");

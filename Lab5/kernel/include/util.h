@@ -29,4 +29,7 @@ uint64_t truncate(uint64_t target, uint64_t unit);
 
 #define is_power_of_two(n) (n > 0 && (n & (n - 1)) == 0)
 
+extern uint64_t get_cpu_id(void);
+extern uint64_t get_current_el(void);
+
 #endif

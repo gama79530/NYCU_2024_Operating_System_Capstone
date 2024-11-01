@@ -8,6 +8,7 @@
 #include "shell.h"
 #include "frame.h"
 #include "memory.h"
+#include "sched.h"
 
 extern char kernel_begin;
 extern char kernel_end;
@@ -35,9 +36,10 @@ int kernel_service_init(uint64_t x0){
     buddy_sys_preserve_memory((void*)&kernel_begin - (1 << 10), (void*)&kernel_begin, "Preserve 1 kb for kernel stack");
     buddy_sys_build();
 
-    printf("\n");
     /* build memory system */
     if(memory_sys_init())   return -1;
+
+    printf("\n");
 
     return 0;
 }

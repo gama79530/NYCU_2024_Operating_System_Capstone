@@ -1,7 +1,7 @@
 #ifndef __CONFIG_H__
 #define __CONFIG_H__
 
-#define VERBOSE                     1
+#define VERBOSE                     0
 
 /* for I/O mode */
 #define USE_ASYNC_IO                1
