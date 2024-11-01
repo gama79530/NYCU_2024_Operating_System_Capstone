@@ -404,15 +404,18 @@ static void command_memory_layout(void){
     buddy_sys_show_layout();
 }
 
+#define DEMO_THREAD_NUM 3
+#define DEMO_LOOP_NUM   3
 static void command_thread_demo(void){
-    int N = 3;
-    for(int i = 0; i < N; i++)
+    for(int i = 0; i < DEMO_THREAD_NUM; i++)
         thread_create(demo_task, NULL);
     
-    for(int i = 0; i < N; i++){
+    for(int i = 0; i < DEMO_LOOP_NUM; i++){
+        preemption_disable();
         printf("main call schedule %d.\n", i);
-        schedule(); //debug
+        preemption_enable();
     }
+
 }
 
 void get_board_revision(void){
@@ -455,8 +458,9 @@ void get_arm_memory_info(void){
 
 void demo_task(void *arg){
     for(int i = 0; i < 10; i++){
-        printf("Thread id: %d, i = %d\n", get_current_task()->pid, i);
-        schedule(); //debug
+        preemption_disable();
+        printf("\rThread id: %d, i = %d\n$ ", get_current_task()->pid, i);
+        preemption_enable();
     }
 }
 

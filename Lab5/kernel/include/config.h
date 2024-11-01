@@ -32,4 +32,7 @@
 #define CHUNK_MIN_SIZE              (1L << CHUNK_MIN_ORDER)
 #define POOL_NUM                    (FRAME_ORDER - CHUNK_MIN_ORDER)
 
+/* for time sharing */
+#define TIME_SHARING_UINT           1
+
 #endif

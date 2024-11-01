@@ -2,6 +2,8 @@
 #include "frame.h"
 #include "config.h"
 #include "util.h"
+#include "printf.h"
+#include "timer.h"
 
 extern void thread_start(void);
 extern void context_switch(task_struct_t *prev_task, task_struct_t *next_wask);
@@ -10,6 +12,7 @@ extern void context_load(task_struct_t *task);
 static LIST_HEAD(task_waiting_q);
 static task_struct_t init_task = {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, {NULL, NULL}, 0, true};
 static task_struct_t *current_task = &init_task;
+static bool time_sharing = false;
 
 task_struct_t* round_robin(void);
 
@@ -36,12 +39,20 @@ int thread_create(task_routine_t routine, void *arg){
 
     list_append(&task->anchor, &task_waiting_q);
 
+#if VERBOSE != 0
+    printf("thread_create with pid %d\n", task->pid);
+#endif
+
     preemption_enable();
     return 0;
 }
 
 void thread_exit(void){
     preemption_disable();
+#if VERBOSE != 0
+    printf("thread_exit with pid %d\n", current_task->pid);
+#endif
+
     // deallocate current_task
     frame_free((void*)current_task);
 
@@ -86,3 +97,20 @@ task_struct_t* round_robin(void){
 task_struct_t* get_current_task(void){
     return current_task;
 }
+
+void time_sharing_enable(void){
+    time_sharing = true;
+    timer_add_timeout_event(TIME_SHARING_UINT, time_sharing_callback, NULL);
+}
+
+void time_sharing_disable(void){
+    time_sharing = false;
+}
+
+void time_sharing_callback(void *arg){
+    schedule();
+    if(time_sharing){
+        timer_add_timeout_event(TIME_SHARING_UINT, time_sharing_callback, NULL);
+    }
+}
+

@@ -41,6 +41,10 @@ int thread_create(task_routine_t routine, void *arg);
 void thread_exit(void);
 
 void schedule(void);
+
+void time_sharing_enable(void);
+void time_sharing_disable(void);
+void time_sharing_callback(void *arg);
 #endif
 
 #endif

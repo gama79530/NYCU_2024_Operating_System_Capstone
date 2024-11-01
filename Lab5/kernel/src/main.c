@@ -39,6 +39,8 @@ int kernel_service_init(uint64_t x0){
     /* build memory system */
     if(memory_sys_init())   return -1;
 
+    time_sharing_enable();
+
     printf("\n");
 
     return 0;
