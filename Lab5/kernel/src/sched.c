@@ -100,7 +100,7 @@ task_struct_t* get_current_task(void){
 
 void time_sharing_enable(void){
     time_sharing = true;
-    timer_add_timeout_event(TIME_SHARING_UINT, time_sharing_callback, NULL);
+    timer_add_timeout_event(TIME_SHARING_MICROSEC, MICROSECOND, time_sharing_callback, NULL);    //debug
 }
 
 void time_sharing_disable(void){
@@ -108,9 +108,10 @@ void time_sharing_disable(void){
 }
 
 void time_sharing_callback(void *arg){
+    // printf("ts\n");
     schedule();
     if(time_sharing){
-        timer_add_timeout_event(TIME_SHARING_UINT, time_sharing_callback, NULL);
+        timer_add_timeout_event(TIME_SHARING_MICROSEC, MICROSECOND, time_sharing_callback, NULL);    //debug
     }
 }
 

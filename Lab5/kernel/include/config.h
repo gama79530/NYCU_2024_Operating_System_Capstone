@@ -33,6 +33,6 @@
 #define POOL_NUM                    (FRAME_ORDER - CHUNK_MIN_ORDER)
 
 /* for time sharing */
-#define TIME_SHARING_UINT           1
+#define TIME_SHARING_MICROSEC       15000
 
 #endif

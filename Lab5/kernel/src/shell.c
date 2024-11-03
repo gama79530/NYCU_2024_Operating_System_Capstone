@@ -10,6 +10,7 @@
 #include "memory.h"
 #include "frame.h"
 #include "sched.h"
+#include "util.h"
 
 static char buffer[SHELL_BUFFER_MAX_SIZE] = {0};
 static int len;
@@ -357,9 +358,9 @@ static void command_timer(void){
         }
     }
 
-    uint64_t time = timer_get_current_time();
+    uint64_t time = timer_get_current_time(SECOND);
     printf("The number of seconds since booting is %d.\n", time);
-    timer_add_timeout_event(countdown, cmd_timer_event_callback, arg);
+    timer_add_timeout_event(countdown, SECOND, cmd_timer_event_callback, arg);
 }
 
 static void command_malloc(void){
@@ -405,17 +406,11 @@ static void command_memory_layout(void){
 }
 
 #define DEMO_THREAD_NUM 3
-#define DEMO_LOOP_NUM   3
+#define DEMO_LOOP_NUM   10
 static void command_thread_demo(void){
     for(int i = 0; i < DEMO_THREAD_NUM; i++)
         thread_create(demo_task, NULL);
     
-    for(int i = 0; i < DEMO_LOOP_NUM; i++){
-        preemption_disable();
-        printf("main call schedule %d.\n", i);
-        preemption_enable();
-    }
-
 }
 
 void get_board_revision(void){
@@ -430,7 +425,7 @@ void get_board_revision(void){
     // tags end
 
     if(mailbox_call(MBOX_CH_PROP)){
-        printf("Board revision\t: 0x%s\n", uint_to_hex_str(mbox[5], NULL, 0));
+        printf("Board revision\t: 0x%s\n", uint_to_hex_str(mbox[5], 0, NULL));
     }else{
         printf("Mailbox error: get_board_revision()");
     }
@@ -449,25 +444,25 @@ void get_arm_memory_info(void){
     // tags end
 
     if(mailbox_call(MBOX_CH_PROP)){
-        printf("ARM memory base\t: 0x%s\n", uint_to_hex_str(mbox[5], NULL, 0));
-        printf("ARM memory size\t: 0x%s\n", uint_to_hex_str(mbox[6], NULL, 0));
+        printf("ARM memory base\t: 0x%s\n", uint_to_hex_str(mbox[5], 0, NULL));
+        printf("ARM memory size\t: 0x%s\n", uint_to_hex_str(mbox[6], 0, NULL));
     }else{
         printf("Mailbox error: get_arm_memory_info()");
     }
 }
 
 void demo_task(void *arg){
-    for(int i = 0; i < 10; i++){
-        preemption_disable();
+    for(int i = 0; i < DEMO_LOOP_NUM; i++){
         printf("\rThread id: %d, i = %d\n$ ", get_current_task()->pid, i);
-        preemption_enable();
+        wait_cycles(1000000);
+        schedule();
     }
 }
 
 void cmd_timer_event_callback(void *arg){
     printf("\r");
     if(arg == NULL){
-        printf("<Timer>: The number of seconds since booting is %d.\n", timer_get_current_time());
+        printf("<Timer>: The number of seconds since booting is %d.\n", timer_get_current_time(SECOND));
     }else{
         char *msg = (char*)arg;
         printf("%s\n", msg);

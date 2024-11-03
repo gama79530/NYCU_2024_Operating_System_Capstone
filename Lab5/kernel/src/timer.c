@@ -46,34 +46,41 @@ void core_timer_disable(void){
     );
 }
 
-void timer_set_countdown(uint64_t countdown, enum tick unit){
+void timer_set_countdown(uint64_t countdown, enum time_unit unit){
     uint64_t tick;
-    
     asm volatile("mrs   %0, cntfrq_el0": "=r"(tick));
-    tick = tick * countdown / unit;
+    tick *= countdown;
+
+    if(unit == MILLISECOND)
+        tick /= 1000;
+    else if(unit == MICROSECOND)
+        tick /= 1000000;
+
     asm volatile("msr    cntp_tval_el0, %0":: "r"(tick));
 }
 
-uint64_t timer_get_current_time(void){
-    uint64_t physical_count, freq;
+uint64_t timer_get_current_time(enum time_unit unit){
+    uint64_t physical_count, freq, current_time;
     asm volatile(
         "mrs   %0, cntpct_el0\n"
         "mrs   %1, cntfrq_el0\n"
         : "=r"(physical_count), "=r"(freq)
     );
 
-    return physical_count / freq;
+    current_time = physical_count / (freq * unit / 1000000);
+
+    return current_time;
 }
 
-void timer_add_timeout_event(uint64_t countdown, timer_event_callback_t cb, void *arg){
+void timer_add_timeout_event(uint64_t countdown, enum time_unit unit, timer_event_callback_t cb, void *arg){
     timer_event_t *event = NULL;
     if(countdown == 0)  return;
 
     event = (timer_event_t*)malloc(sizeof(timer_event_t));
     if(event == NULL)   return;
 
-    event->registration_time = timer_get_current_time();
-    event->expired_time = event->registration_time + countdown;
+    event->registration_time = timer_get_current_time(MICROSECOND);
+    event->expired_time = event->registration_time + countdown * unit;
     event->callback = cb;
     event->arg = arg;
 
@@ -90,20 +97,21 @@ void timer_add_timeout_event(uint64_t countdown, timer_event_callback_t cb, void
     enable_interrupt_all();
 
     if(event == container_of(waiting_event_q.next, timer_event_t, anchor)){
-        timer_set_countdown(event->expired_time - timer_get_current_time(), SECOND);
+        timer_set_countdown(event->expired_time - timer_get_current_time(MICROSECOND), MICROSECOND);
         core_timer_enable();
     }
 }
 
+
 void handler_el1_5_timer_event(void){
-    uint64_t current_time = timer_get_current_time();
+    uint64_t current_time = timer_get_current_time(MICROSECOND);
     timer_event_t *event = NULL;
 
     while(!list_is_empty(&waiting_event_q)){
         event = container_of(waiting_event_q.next, timer_event_t, anchor);
         // The expired time has not arrived.
         if(event->expired_time > current_time){
-            timer_set_countdown(event->expired_time - timer_get_current_time(), SECOND);
+            timer_set_countdown(event->expired_time - timer_get_current_time(MICROSECOND), MICROSECOND);
             core_timer_enable();
             break;
         }
