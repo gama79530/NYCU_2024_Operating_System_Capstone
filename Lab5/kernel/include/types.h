@@ -6,6 +6,8 @@
 
 #define NULL            0
 
+typedef __SIZE_TYPE__   size_t;
+
 typedef char            int8_t;
 typedef short           int16_t;
 typedef int             int32_t;

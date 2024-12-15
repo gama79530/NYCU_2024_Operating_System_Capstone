@@ -39,11 +39,7 @@ void uart_init(void){
 }
 
 void putc(void *p, char c){
-#if USE_ASYNC_IO == 0
-    uart_poll_putc(c);
-#else
-    uart_async_putc(c);
-#endif
+    uart_putc(c);
 }
 
 char uart_poll_getb(void){

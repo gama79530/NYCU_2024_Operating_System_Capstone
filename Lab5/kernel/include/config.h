@@ -4,13 +4,10 @@
 #define VERBOSE                     0
 
 /* for I/O */
-#define USE_ASYNC_IO                1
+#define USE_ASYNC_IO                0
 /* buffer size should be power of 2 */
 #define RX_BUFFER_SIZE              (1 << 6)
 #define TX_BUFFER_SIZE              (1 << 6)
-
-/* for register set */
-#define S_FRAME_SIZE                (17 * 16)
 
 /* for shell */
 #define SHELL_BUFFER_MAX_SIZE       256
@@ -36,12 +33,29 @@
 /* for time sharing */
 #define TIME_SHARING_MICROSEC       15000
 
-/* derivative settings */
+/*****************************************************************
+ *                      derivative settings                      *                           
+ *****************************************************************/
 /* for buddy system */
 #define FRAME_SIZE                  (1L << FRAME_ORDER)
 #define FRAME_NUM                   ((MEMORY_BOUNDARY - MEMORY_BASE) >> FRAME_ORDER)
 /* for memory system */
 #define CHUNK_MIN_SIZE              (1L << CHUNK_MIN_ORDER)
 #define POOL_NUM                    (FRAME_ORDER - CHUNK_MIN_ORDER)
+
+/* for I/O */
+#if USE_ASYNC_IO == 0
+    #define uart_getb                   uart_poll_getb
+    #define uart_getc                   uart_poll_getc
+    #define uart_putc                   uart_poll_putc
+    #define uart_puts                   uart_poll_puts
+    #define uart_putln                  uart_poll_putln
+#else
+    #define uart_getb                   uart_async_getb
+    #define uart_getc                   uart_async_getc
+    #define uart_putc                   uart_async_putc
+    #define uart_puts                   uart_async_puts
+    #define uart_putln                  uart_async_putln
+#endif
 
 #endif

@@ -42,7 +42,7 @@ static void command_mailbox(void);
 static void command_reboot(void);
 static void command_ls(void);
 static void command_cat(void);
-// static void command_exec(void);
+static void command_exec(void);
 static void command_timer(void);
 static void command_malloc(void);
 static void command_free(void);
@@ -89,11 +89,7 @@ static int read_command(void){
     len = 0;
     char c = '\0';
     do{
-        #if USE_ASYNC_IO == 0
-        c = uart_poll_getc();
-        #else
-        c = uart_async_getc();
-        #endif
+        c = uart_getc();
         
         if(c == '\n'){
             buffer[len++] = '\0';
@@ -157,8 +153,8 @@ static void execute_command(void){
         command_ls();
     }else if(!strncmp(tokens[0], "cat", SHELL_TOKEN_MAX_LEN)){
         command_cat();
-    // }else if(!strncmp(tokens[0], "exec", SHELL_TOKEN_MAX_LEN)){
-    //     command_exec();
+    }else if(!strncmp(tokens[0], "exec", SHELL_TOKEN_MAX_LEN)){
+        command_exec();
     }else if(!strncmp(tokens[0], "timer", SHELL_TOKEN_MAX_LEN)){
         command_timer();
     }else if(!strncmp(tokens[0], "malloc", SHELL_TOKEN_MAX_LEN)){
@@ -188,7 +184,7 @@ static void command_help(void){
         "reboot\t\t: Reboot system.\n"
         "ls*\t\t: List the file names in ramdisk.\n"
         "cat*\t\t: Display the file content in ramdisk.\n"
-        // "exec*\t\t: Execute a program in Ramdisk.\n"
+        "exec*\t\t: Execute a program in Ramdisk.\n"
         "timer*\t\t: Display the number of seconds since booting and trigger a delayed timer interrupt.\n"
         "malloc*\t\t: Allocates and returns a pointer to the allocated memory.\n"
         "free*\t\t: Deallocated memory.\n"
@@ -310,48 +306,48 @@ static void command_cat(void){
     }
 }
 
-// static void command_exec(void){
-//     void *current;
-//     file_info_t info;
-//     char *user_prog;
-//     const uint64_t spsr_el1 = 0x340; // DAF masked + EL0t
-//     const uint64_t load_addr = 0x20000;
-//     const uint64_t stack_ptr = load_addr + 0x2000;
+static void command_exec(void){
+    void *current;
+    file_info_t info;
+    char *user_prog;
+    const uint64_t spsr_el1 = 0x340; // DAF masked + EL0t
+    const uint64_t load_addr = 0x20000;
+    const uint64_t stack_ptr = load_addr + 0x2000;
 
-//     is_help(
-//         printf("{file name}\t: The file name of the program. You can specify exactly one file at a time.\n");
-//     );
+    is_help(
+        printf("{file name}\t: The file name of the program. You can specify exactly one file at a time.\n");
+    );
 
-//     if(token_num < 2){
-//         printf("Program file name is required.\n");
-//     }else if(token_num > 2){
-//         printf("You cannot assign more than one program at a time.\n");
-//     }else{
-//         current = get_cpio_base();
-//         while(current != NULL){
-//             // extract file info
-//             if(cpio_file_iter(&current, &info)){ // abnormal iter 
-//                 break;
-//             }
+    if(token_num < 2){
+        printf("Program file name is required.\n");
+    }else if(token_num > 2){
+        printf("You cannot assign more than one program at a time.\n");
+    }else{
+        current = get_cpio_base();
+        while(current != NULL){
+            // extract file info
+            if(cpio_file_iter(&current, &info)){ // abnormal iter 
+                break;
+            }
 
-//             if(!strcmp(tokens[1], info.name)){
-//                 // copy file to user program load address
-//                 user_prog = (char*)load_addr;
-//                 for(int i = 0; i < info.content_size; i++){
-//                     user_prog[i] = ((char*)info.content)[i];
-//                 }
+            if(!strcmp(tokens[1], info.name)){
+                // copy file to user program load address
+                user_prog = (char*)load_addr;
+                for(int i = 0; i < info.content_size; i++){
+                    user_prog[i] = ((char*)info.content)[i];
+                }
                 
-//                 // Switch to EL0 and execute user program
-//                 asm volatile("msr spsr_el1, %0" : : "r"(spsr_el1));
-//                 asm volatile("msr elr_el1, %0" : : "r"(load_addr));
-//                 asm volatile("msr sp_el0, %0" : : "r"(stack_ptr));
-//                 asm volatile("eret");
-//             }
-//         }
+                // Switch to EL0 and execute user program
+                asm volatile("msr spsr_el1, %0" : : "r"(spsr_el1));
+                asm volatile("msr elr_el1, %0" : : "r"(load_addr));
+                asm volatile("msr sp_el0, %0" : : "r"(stack_ptr));
+                asm volatile("eret");
+            }
+        }
 
-//         printf("Program \"%s\" does not exist.\n", tokens[1]);
-//     }
-// }
+        printf("Program \"%s\" does not exist.\n", tokens[1]);
+    }
+}
 
 static void command_timer(void){
     uint64_t countdown = 2;
