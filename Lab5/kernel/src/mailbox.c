@@ -13,7 +13,7 @@ int mailbox_call(uint8_t channel){
     // step 3: If not, then you can write to Mailbox 1 Read/Write register.
     put32(MBOX_WRITE, r);
 
-    while(1){
+    while(true){
         // step 4: Check if Mailbox 0 status register’s empty flag is set.
         while(get32(MBOX_STATUS) & MBOX_EMPTY);
         // step 5: If not, then you can read from Mailbox 0 Read/Write register.

@@ -13,6 +13,7 @@ all: kernel8.img
 
 debug: CFLAGS += -g 
 debug: ASMCFLAGS += -g
+debug: clean
 debug: kernel8.img
 
 $(BUILD_DIR)/%_c.o: $(SRC_DIR)/%.c
@@ -42,10 +43,10 @@ clean:
 run: 
 	qemu-system-aarch64 -M raspi3b -kernel kernel8.img -display none -serial null -serial stdio $(CPIO) $(DTB)
 	
-debug-qemu: 
+qemu: 
 	qemu-system-aarch64 -M raspi3b -kernel kernel8.img -serial null -serial stdio -display none -S -s $(CPIO) $(DTB)
 
-debug-gdb:
+gdb:
 	gdb-multiarch build/kernel8.elf
 
 run-on-board:

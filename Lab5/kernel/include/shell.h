@@ -3,5 +3,6 @@
 #include "types.h"
 
 void shell(void);
+void new_line(void);
 
 #endif

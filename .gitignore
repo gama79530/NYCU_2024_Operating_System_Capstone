@@ -2,6 +2,7 @@
 build
 *.img
 *.cpio
+*_bk*
 
 venv
 .vscode

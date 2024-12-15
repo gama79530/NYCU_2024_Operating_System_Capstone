@@ -9,3 +9,18 @@ get_current_el:
     mrs     x0, CurrentEL
     lsr     x0, x0, #2
     ret
+
+.global memzero
+memzero:
+    cmp     x1, #8
+    b.lt    1f
+    str     xzr, [x0], #8
+    sub     x1, x1, #8
+    b       memzero
+1:
+    cbz     x1, 2f
+    strb    wzr, [x0], #1
+    sub     x1, x1, #1
+    b       1b
+2:
+    ret

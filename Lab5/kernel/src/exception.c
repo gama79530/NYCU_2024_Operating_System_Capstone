@@ -1,222 +1,233 @@
 #include "exception.h"
-#include "printf.h"
 #include "list.h"
 #include "util.h"
 #include "peripheral.h"
-#include "mini_uart.h"
 #include "memory.h"
-#include "string.h"
+#include "mini_uart.h"
+#include "config.h"
 #include "timer.h"
+#include "arm_v8.h"
+#include "string.h"
 
-enum task_status{
-    BLANK,
-    WAITING,
-    EXECUTING,
+typedef struct irq_task{
+    list_head_t             head;
+    irq_task_cb_t           callback;
+    uint8_t                 priority;   // smaller number => higher priority
+} irq_task_t;
+
+static LIST_HEAD(blank_irq_tasks_q);
+static LIST_HEAD(waiting_irq_tasks_q);
+
+void show_invalid_entry_message(uint64_t type, uint64_t spsr_el1, uint64_t esr_el1, uint64_t elr_el1);
+void sync_invalid_el1h(void);
+void sync_invalid_el0_64(void);
+void irq_invalid_el0_64(void);
+
+void irq_handler(void);
+irq_task_t* get_blank_task(void);
+void add_waiting_task(irq_task_t *task);
+void execute_waiting_task(void);
+
+const char* entry_error_type[] = {
+    "SYNC_INVALID_EL1t",
+    "IRQ_INVALID_EL1t",
+    "FIQ_INVALID_EL1t",
+    "ERROR_INVALID_EL1t",
+    "SYNC_INVALID_EL1h",
+    "IRQ_INVALID_EL1h",
+    "FIQ_INVALID_EL1h",
+    "ERROR_INVALID_EL1h",
+    "SYNC_INVALID_EL0_64",
+    "IRQ_INVALID_EL0_64",
+    "FIQ_INVALID_EL0_64",
+    "ERROR_INVALID_EL0_64",
+    "SYNC_INVALID_EL0_32",
+    "IRQ_INVALID_EL0_32",
+    "FIQ_INVALID_EL0_32",
+    "ERROR_INVALID_EL0_32",
+    "SYNC_ERROR",
+    "SYSCALL_ERROR"
 };
 
-typedef struct task{
-    list_head_t         anchor;
-    enum task_status    status;
-    uint8_t             priority;   // smaller number is more preemptive
-    task_handler_t      handler;
-} task_t;
+void show_invalid_entry_message(uint64_t type, uint64_t spsr, uint64_t esr, uint64_t elr){
+    disable_all_exception();
 
-static LIST_HEAD(blank_tasks_q);
-static LIST_HEAD(waiting_tasks_q);
+    uart_poll_puts(entry_error_type[type]);
+    uart_poll_puts(": ");
+    // decode exception type (some, not all. See ARM DDI0487B_b chapter D10.2.28)
+    switch (esr >> ESR_ELx_EC_SHIFT) {
+    case 0b000000:
+        uart_poll_puts("Unknown");
+        break;
+    case 0b000001:
+        uart_poll_puts("Trapped WFI/WFE");
+        break;
+    case 0b001110:
+        uart_poll_puts("Illegal execution");
+        break;
+    case 0b010101:
+        uart_poll_puts("System call");
+        break;
+    case 0b100000:
+        uart_poll_puts("Instruction abort, lower EL");
+        break;
+    case 0b100001:
+        uart_poll_puts("Instruction abort, same EL");
+        break;
+    case 0b100010:
+        uart_poll_puts("Instruction alignment fault");
+        break;
+    case 0b100100:
+        uart_poll_puts("Data abort, lower EL");
+        break;
+    case 0b100101:
+        uart_poll_puts("Data abort, same EL");
+        break;
+    case 0b100110:
+        uart_poll_puts("Stack alignment fault");
+        break;
+    case 0b101100:
+        uart_poll_puts("Floating point");
+        break;
+    default:
+        uart_poll_puts("Unknown");
+        break;
+    }
+    // decode data abort cause
+    if (esr >> ESR_ELx_EC_SHIFT == 0b100100 ||
+        esr >> ESR_ELx_EC_SHIFT == 0b100101) {
+        uart_poll_puts(", ");
+        switch ((esr >> 2) & 0x3) {
+        case 0:
+            uart_poll_puts("Address size fault");
+            break;
+        case 1:
+            uart_poll_puts("Translation fault");
+            break;
+        case 2:
+            uart_poll_puts("Access flag fault");
+            break;
+        case 3:
+            uart_poll_puts("Permission fault");
+            break;
+        }
+        switch (esr & 0x3) {
+        case 0:
+            uart_poll_puts(" at level 0");
+            break;
+        case 1:
+            uart_poll_puts(" at level 1");
+            break;
+        case 2:
+            uart_poll_puts(" at level 2");
+            break;
+        case 3:
+            uart_poll_puts(" at level 3");
+            break;
+        }
+    }
 
-task_t* get_blank_task(void);
-void add_waiting_task(task_t *task);
-void waiting_task_exec(void);
+    // dump registers
+    char buffer[9];
+    uart_poll_puts(":\n, SPSR: 0x");
+    uart_poll_puts(uint_to_hex_str(spsr, 0, buffer));
+    uart_poll_puts(", ESR: 0x");
+    uart_poll_puts(uint_to_hex_str(esr, 0, buffer));
+    uart_poll_puts(", ELR: 0x");
+    uart_poll_puts(uint_to_hex_str(elr, 0, buffer));
+    uart_poll_puts("\n");
 
-void get_esr_fields(uint32_t OUT *ec_ref, uint32_t OUT *il_ref, uint32_t OUT *iss_ref, uint8_t el);
-
-void handler_el1_0(void){
-    uart_poll_putln("synchronous exception from current EL, using SP_EL0\n");
+    enable_all_exception();
 }
 
-void handler_el1_1(void){
-    printf("IRQ exception from current EL, using SP_EL0\n");
+void irq_invalid_el1h(void){
+    irq_handler();
 }
 
-void handler_el1_2(void){
-    printf("FIQ exception from current EL, using SP_EL0\n");
+void sync_invalid_el0_64(void){
+
 }
 
-void handler_el1_3(void){
-    printf("SError exception from current EL, using SP_EL0\n");
+void irq_invalid_el0_64(void){
+    irq_handler();
 }
 
-// synchronous exception from current EL, using SP_ELx
-void handler_el1_4(void){
-    uint32_t ec, il, iss;
-    get_esr_fields(&ec, &il, &iss, 1);
-    uart_poll_puts("handler_el1_8: ec = 0x");
-    uart_poll_puts(uint_to_hex_str(ec, -1, NULL));
-    uart_poll_puts(", il = 0x");
-    uart_poll_puts(uint_to_hex_str(il, -1, NULL));
-    uart_poll_puts(", iss = 0x");
-    uart_poll_putln(uint_to_hex_str(iss, -1, NULL));
-}
+void irq_handler(void){
+    irq_task_t *task = NULL;
 
-// IRQ exception from current EL, using SP_ELx
-void handler_el1_5(void){
-    task_t *task = NULL;
-    
+    disable_all_exception();
     if(get32(IRQ_PENDING_1) & IRQ_AUX_INT){         // UART IRQ
-        // because we process asynchronous IO in this block, we can't use any asynchronous IO here.
         if(get32(AUX_MU_IIR) & AUX_IRQ_RX){         // Receiver holds valid byte
             uart_rx_clr();
             task = get_blank_task();
-            task->status = WAITING;
-            task->priority = 3;
-            task->handler = handler_uart_rx;
+            task->priority = UART_IRQ_PRIORITY;
+            task->callback = uart_irq_task_cb_rx;
         }else if(get32(AUX_MU_IIR) & AUX_IRQ_TX){   // Transmit holding register empty
             uart_tx_clr();
             task = get_blank_task();
-            task->status = WAITING;
-            task->priority = 3;
-            task->handler = handler_uart_tx;
+            task->priority = UART_IRQ_PRIORITY;
+            task->callback = uart_irq_task_cb_tx;
         }
     }else if(get32(CORE0_IRQ_SOURCE) & CNTPNSIRQ){  // timer IRQ
         core_timer_disable();
         task = get_blank_task();
-        task->status = WAITING;
-        task->priority = 1;
-        task->handler = handler_el1_5_timer_event;
+        task->priority = TIMER_IRQ_PRIORITY;
+        task->callback = irq_timer_event;
     }else{
-        printf("IRQ exception from current EL, using SP_ELx\n");
+        uart_poll_putln("Unknown pending interrupt");
+        uart_poll_putln("");
     }
 
     if(task){
         add_waiting_task(task);
-        waiting_task_exec();
+        execute_waiting_task();
     }
+    enable_all_exception();
 }
 
-void handler_el1_6(void){
-    printf("FIQ exception from current EL, using SP_ELx\n");
-}
-
-void handler_el1_7(void){
-    printf("SError exception from current EL, using SP_ELx\n");
-}
-
-// synchronous exception from lower EL, at least one lower EL is AArch64
-void handler_el1_8(void){
-    uint32_t ec, il, iss;
-    get_esr_fields(&ec, &il, &iss, 1);
-    switch(ec){
-        case 0x15:  // SVC instruction execution
-            uart_poll_putln("User program synchronous exception generated by the SVC instruction.");
-            break;
-        default:
-            uart_poll_puts("handler_el1_8: ec = 0x");
-            uart_poll_puts(uint_to_hex_str(ec, -1, NULL));
-            uart_poll_puts(", il = 0x");
-            uart_poll_puts(uint_to_hex_str(il, -1, NULL));
-            uart_poll_puts(", iss = 0x");
-            uart_poll_putln(uint_to_hex_str(iss, -1, NULL));
-            break;
-    }
-}
-
-void handler_el1_9(void){
-    printf("IRQ exception from lower EL, at least one lower EL is AArch64\n");
-}
-
-void handler_el1_10(void){
-    printf("FIQ exception from lower EL, at least one lower EL is AArch64\n");
-}
-
-void handler_el1_11(void){
-    printf("SError exception from lower EL, at least one lower EL is AArch64\n");
-}
-
-void handler_el1_12(void){
-    uart_poll_putln("synchronous exception from lower EL, all lower ELs are AArch32\n");
-}
-
-void handler_el1_13(void){
-    printf("IRQ exception from lower EL, all lower ELs are AArch32\n");
-}
-
-void handler_el1_14(void){
-    printf("FIQ exception from lower EL, all lower ELs are AArch32\n");
-}
-
-void handler_el1_15(void){
-    printf("SError exception from lower EL, all lower ELs are AArch32\n");
-}
-
-void get_esr_fields(uint32_t OUT *ec_ref, uint32_t OUT *il_ref, uint32_t OUT *iss_ref, uint8_t el){
-    uint32_t esr = 0, ec = 0, il = 0, iss = 0;
-    switch(el){
-        case 1:
-            asm volatile("mrs %0, esr_el1": "=r"(esr));
-            break;
-        case 2:
-            asm volatile("mrs %0, esr_el2": "=r"(esr));
-            break;
-        case 3:
-            asm volatile("mrs %0, esr_el3": "=r"(esr));
-            break;
-    }
-    ec = esr >> 26;
-    il = esr >> 25 & 0x1;
-    iss = esr & ((1 << 25) - 1);
-
-    if(ec_ref != NULL)  *ec_ref = ec;
-    if(il_ref != NULL)  *il_ref = il;
-    if(iss_ref != NULL)  *iss_ref = iss;
-}
-
-task_t* get_blank_task(void){
-    task_t *task = NULL;
-    if(list_is_empty(&blank_tasks_q)){
-        task = (task_t*)startup_alloc(sizeof(task_t));
+irq_task_t* get_blank_task(void){
+    irq_task_t *task = NULL;
+    if(list_is_empty(&blank_irq_tasks_q)){
+        task = (irq_task_t*)startup_alloc(sizeof(irq_task_t));
         if(task == NULL)
-            task = (task_t*)malloc(sizeof(task_t));
+            task = (irq_task_t*)malloc(sizeof(irq_task_t));
     }else{
-        task = container_of(blank_tasks_q.next, task_t, anchor);
-        list_remove(&task->anchor);
+        task = container_of(blank_irq_tasks_q.next, irq_task_t, head);
+        list_remove(&task->head);
     }
 
     if(task != NULL){
-        task->anchor.prev = task->anchor.next = &task->anchor;
-        task->status = BLANK;
+        task->head.prev = task->head.next = &task->head;
         task->priority = 255;
-        task->handler = NULL;
+        task->callback = NULL;
     }
     
     return task;
 }
 
-void add_waiting_task(task_t *task){
+void add_waiting_task(irq_task_t *task){
     if(task){
-        list_head_t *prev = &waiting_tasks_q;
+        list_head_t *prev = &waiting_irq_tasks_q;
         list_head_t *next = prev->next;
 
-        while(!list_is_head_node(next, &waiting_tasks_q) && container_of(next, task_t, anchor)->priority <= task->priority){
+        while(!list_is_head_node(next, &waiting_irq_tasks_q) && container_of(next, irq_task_t, head)->priority <= task->priority){
             prev = next;
             next = next->next;
         }
 
-        list_add(&task->anchor, prev, next);
+        list_add(&task->head, prev, next);
     }
 }
 
-void waiting_task_exec(void){
-    task_t *task = NULL;
-    while(!list_is_empty(&waiting_tasks_q)){
-        task = container_of(waiting_tasks_q.next, task_t, anchor);
-        if(task->status != WAITING) break;
-        enable_interrupt_all();
-        task->status = EXECUTING;
-        task->handler();
-        disable_interrupt_all();
-
-        task->status = BLANK;
-        list_remove(&task->anchor);
-        list_append(&task->anchor, &blank_tasks_q);
+void execute_waiting_task(void){
+    irq_task_t *task = NULL;
+    while(!list_is_empty(&waiting_irq_tasks_q)){
+        task = container_of(waiting_irq_tasks_q.next, irq_task_t, head);
+        list_remove(&task->head);
+        enable_all_exception();
+        task->callback();
+        disable_all_exception();
+        
+        list_append(&task->head, &blank_irq_tasks_q);
     }
 }

@@ -8,15 +8,21 @@
 static LIST_HEAD(waiting_event_q);
 
 typedef struct timer_event{
-    list_head_t             anchor;
+    list_head_t             head;
     uint64_t                registration_time;
     uint64_t                expired_time;
-    timer_event_callback_t  callback;
+    uint64_t                period;
+    timer_event_cb_t        callback;
     void                    *arg;
 } timer_event_t;
 
+void add_waiting_event(timer_event_t *event);
+
 void core_timer_enable(void){
-    // enable timer
+    /********************************************************************
+     * enable timer
+     * Page 2179 of AArch64-Reference-Manual
+     ********************************************************************/
     asm volatile(
         "mov    x0, 1\n"
         "msr    cntp_ctl_el0, x0\n"
@@ -36,7 +42,10 @@ void core_timer_enable(void){
 }
 
 void core_timer_disable(void){
-    // disable timer
+    /********************************************************************
+     * disable timer
+     * Page 2179 of AArch64-Reference-Manual
+     ********************************************************************/
     asm volatile(
         "mov    x0, 0\n"
         "msr    cntp_ctl_el0, x0\n"
@@ -72,52 +81,68 @@ uint64_t timer_get_current_time(enum time_unit unit){
     return current_time;
 }
 
-void timer_add_timeout_event(uint64_t countdown, enum time_unit unit, timer_event_callback_t cb, void *arg){
+void timer_add_timeout_event(enum time_unit unit, uint64_t countdown, uint64_t period, timer_event_cb_t callback, void *arg){
     timer_event_t *event = NULL;
-    if(countdown == 0)  return;
-
+    if(countdown == 0){
+        return;
+    }
     event = (timer_event_t*)malloc(sizeof(timer_event_t));
-    if(event == NULL)   return;
-
+    if(event == NULL){
+        return;
+    }
     event->registration_time = timer_get_current_time(MICROSECOND);
     event->expired_time = event->registration_time + countdown * unit;
-    event->callback = cb;
+    event->period = period * unit;
+    event->callback = callback;
     event->arg = arg;
 
-    list_head_t *prev = &waiting_event_q;
-    list_head_t *next = prev->next;
-
-    disable_interrupt_all();
-    while(!list_is_head_node(next, &waiting_event_q) && 
-          container_of(next, timer_event_t, anchor)->expired_time <= event->expired_time){
-        prev = next;
-        next = next->next;
-    }
-    list_add(&event->anchor, prev, next);
-    enable_interrupt_all();
-
-    if(event == container_of(waiting_event_q.next, timer_event_t, anchor)){
-        timer_set_countdown(event->expired_time - timer_get_current_time(MICROSECOND), MICROSECOND);
-        core_timer_enable();
-    }
+    add_waiting_event(event);
 }
 
-
-void handler_el1_5_timer_event(void){
-    uint64_t current_time = timer_get_current_time(MICROSECOND);
+void irq_timer_event(void){
     timer_event_t *event = NULL;
+    uint64_t current_time;
 
     while(!list_is_empty(&waiting_event_q)){
-        event = container_of(waiting_event_q.next, timer_event_t, anchor);
+        event = container_of(waiting_event_q.next, timer_event_t, head);
+        current_time = timer_get_current_time(MICROSECOND);
         // The expired time has not arrived.
         if(event->expired_time > current_time){
-            timer_set_countdown(event->expired_time - timer_get_current_time(MICROSECOND), MICROSECOND);
+            timer_set_countdown(event->expired_time - current_time, MICROSECOND);
             core_timer_enable();
             break;
         }
 
+        list_remove(&event->head);
         event->callback(event->arg);
-        list_remove(&event->anchor);
-        free(event);
+
+        if(event->period){
+            event->registration_time = current_time;
+            event->expired_time = current_time + event->period;
+            add_waiting_event(event);
+        }else{
+            free(event);
+        }
+    }
+}
+
+void add_waiting_event(timer_event_t *event){
+    if(event == NULL)   return;
+    list_head_t *prev = &waiting_event_q;
+    list_head_t *next = prev->next;
+
+    disable_irq();
+    while(!list_is_head_node(next, &waiting_event_q) && 
+        container_of(next, timer_event_t, head)->expired_time <= event->expired_time){
+        prev = next;
+        next = next->next;
+    }
+    list_add(&event->head, prev, next);
+    enable_irq();
+
+    if(event == container_of(waiting_event_q.next, timer_event_t, head)){
+        int countdown = event->expired_time - timer_get_current_time(MICROSECOND);
+        timer_set_countdown(countdown, MICROSECOND);
+        core_timer_enable();
     }
 }

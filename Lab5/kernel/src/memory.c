@@ -6,7 +6,7 @@
 #include "list.h"
 
 typedef struct chunk_pool_header{
-    list_head_t anchor;
+    list_head_t head;
     void        *chunks_base;
     bool        *chunk_is_allocated;
     uint16_t    free_num;
@@ -52,8 +52,9 @@ int memory_sys_init(void){
 #endif
         return -1;
     }
-    for(int i = 0; i < POOL_NUM; i++)
+    for(int i = 0; i < POOL_NUM; i++){
         chunk_pools[i].prev = chunk_pools[i].next = chunk_pools + i;
+    }
 
     return 0;
 }
@@ -81,7 +82,7 @@ void* memory_alloc(uint64_t size){
         for(buddy_order = 0; frame_num > (1L << buddy_order); buddy_order++);
         chunk_pool_header_t *buddy_group = (chunk_pool_header_t*)frame_alloc(buddy_order);
         if(buddy_group == NULL) return NULL;
-        list_append(&buddy_group->anchor, chunk_pools + pool_idx);
+        list_append(&buddy_group->head, chunk_pools + pool_idx);
         buddy_group->pool_idx = pool_idx;
         buddy_group->free_num = 0;
         buddy_group->allocated_num = 1;
@@ -93,7 +94,7 @@ void* memory_alloc(uint64_t size){
         /* find pool_node */
         list_head_t *node;
         for(node = chunk_pools[pool_idx].next;
-            node != chunk_pools + pool_idx && container_of(node, chunk_pool_header_t, anchor)->free_num == 0;
+            node != chunk_pools + pool_idx && container_of(node, chunk_pool_header_t, head)->free_num == 0;
             node = node->next
         );
 
@@ -106,7 +107,7 @@ void* memory_alloc(uint64_t size){
             pool_node = (chunk_pool_header_t*)frame_alloc(0);
             if(pool_node == NULL)   return NULL;
 
-            list_append(&pool_node->anchor, chunk_pools + pool_idx);
+            list_append(&pool_node->head, chunk_pools + pool_idx);
             pool_node->pool_idx = pool_idx;
             pool_node->free_num = (FRAME_SIZE - sizeof(chunk_pool_header_t)) / (sizeof(bool) + chunk_size);
             pool_node->allocated_num = 0;
@@ -118,7 +119,7 @@ void* memory_alloc(uint64_t size){
 #if VERBOSE != 0
             printf("memory_alloc: find chunk from an existing pool_node.\n");
 #endif
-            pool_node = container_of(node, chunk_pool_header_t, anchor);
+            pool_node = container_of(node, chunk_pool_header_t, head);
         }
         
         uint16_t chunk_idx;
@@ -165,7 +166,7 @@ void memory_free(void *ptr){
 #if VERBOSE != 0
         printf("memory_free: remove a pool_node\n");
 #endif
-            list_remove(&header->anchor);
+            list_remove(&header->head);
             frame_free((void*)header);
         }
     }
