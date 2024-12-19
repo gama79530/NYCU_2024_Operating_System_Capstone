@@ -18,9 +18,26 @@ memzero:
     sub     x1, x1, #8
     b       memzero
 1:
-    cbz     x1, 2f
+    cbz     x1, 1f
     strb    wzr, [x0], #1
     sub     x1, x1, #1
     b       1b
-2:
+1:
+    ret
+
+.global memcpy
+memcpy:
+    cmp     x2, #8
+    b.lt    1f
+    ldr     x3, [x1], #8
+    str     x3, [x0], #8
+    sub     x2, x2, #8
+    b       memcpy
+1:
+    cbz     x2, 1f
+    ldrb    w3, [x1], #1
+    strb    w3, [x0], #1
+    sub     x2, x2, #1
+    b       1b
+1:
     ret

@@ -6,6 +6,7 @@
 extern uint64_t get_cpu_id(void);
 extern uint64_t get_current_el(void);
 extern void memzero(void *ptr, uint64_t size);
+extern void memcpy(void *dest, const void *src, size_t n);
 
 #define container_of(ptr, type, member) ((type*)((void*)(ptr) - offsetof(type, member)))
 

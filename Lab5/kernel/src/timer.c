@@ -55,7 +55,7 @@ void core_timer_disable(void){
     );
 }
 
-void timer_set_countdown(uint64_t countdown, enum time_unit unit){
+void timer_set_countdown(uint64_t countdown, time_unit_t unit){
     uint64_t tick;
     asm volatile("mrs   %0, cntfrq_el0": "=r"(tick));
     tick *= countdown;
@@ -68,7 +68,7 @@ void timer_set_countdown(uint64_t countdown, enum time_unit unit){
     asm volatile("msr    cntp_tval_el0, %0":: "r"(tick));
 }
 
-uint64_t timer_get_current_time(enum time_unit unit){
+uint64_t timer_get_current_time(time_unit_t unit){
     uint64_t physical_count, freq, current_time;
     asm volatile(
         "mrs   %0, cntpct_el0\n"
@@ -81,7 +81,7 @@ uint64_t timer_get_current_time(enum time_unit unit){
     return current_time;
 }
 
-void timer_add_timeout_event(enum time_unit unit, uint64_t countdown, uint64_t period, timer_event_cb_t callback, void *arg){
+void timer_add_timeout_event(time_unit_t unit, uint64_t countdown, uint64_t period, timer_event_cb_t callback, void *arg){
     timer_event_t *event = NULL;
     if(countdown == 0){
         return;
