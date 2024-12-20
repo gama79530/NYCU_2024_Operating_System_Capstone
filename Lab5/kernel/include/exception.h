@@ -1,10 +1,6 @@
 #ifndef __EXCEPTION_H__
 #define __EXCEPTION_H__
 
-/* for register set */
-#define S_FRAME_SIZE                (17 * 16)   // size of all saved registers 
-#define S_X0                        0           // offset of x0 register in saved stack frame
-
 /* vector table id */
 #define SYNC_INVALID_EL1t       0
 #define IRQ_INVALID_EL1t        1
@@ -28,10 +24,6 @@
 #ifndef __ASSEMBLER__
 #include "types.h"
 
-/************************************************************************
- * Instructions for accessing the PSTATE fields, page 236 of
- * AArch64-Reference-Manual
- ************************************************************************/
 extern void enable_fiq(void);
 extern void disable_fiq(void);
 extern void enable_irq(void);
@@ -45,6 +37,6 @@ extern void disable_all_exception(void);
 extern void err_hang(void);
 
 typedef void (*irq_task_cb_t)(void);
-#endif
 
+#endif
 #endif

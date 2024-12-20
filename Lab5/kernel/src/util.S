@@ -29,14 +29,14 @@ memzero:
 memcpy:
     cmp     x2, #8
     b.lt    1f
-    ldr     x3, [x1], #8
-    str     x3, [x0], #8
+    ldr     x9, [x1], #8
+    str     x9, [x0], #8
     sub     x2, x2, #8
     b       memcpy
 1:
     cbz     x2, 1f
-    ldrb    w3, [x1], #1
-    strb    w3, [x0], #1
+    ldrb    w9, [x1], #1
+    strb    w9, [x0], #1
     sub     x2, x2, #1
     b       1b
 1:

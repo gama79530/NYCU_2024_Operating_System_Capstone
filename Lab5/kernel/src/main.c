@@ -8,7 +8,7 @@
 #include "shell.h"
 #include "frame.h"
 #include "memory.h"
-// #include "sched.h"
+#include "sched.h"
 
 extern char kernel_begin;
 extern char kernel_end;
@@ -49,7 +49,10 @@ int kernel_service_init(uint64_t x0){
         return -1;
     }
 
-    // time_sharing_enable();
+    /* initialize time-sharing */
+    if(scheduling_init()){
+        return -1;
+    }
 
     printf("\n");
 
@@ -59,6 +62,6 @@ int kernel_service_init(uint64_t x0){
 void kernel_main(uint64_t x0){
     if(kernel_service_init(x0)){
         return;
-    }   
+    }
     shell();
 }

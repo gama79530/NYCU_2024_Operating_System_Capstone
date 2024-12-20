@@ -24,6 +24,7 @@ static inline bool list_is_empty(list_head_t *head){
 static inline void list_remove(list_head_t *node){
     node->next->prev = node->prev;
     node->prev->next = node->next;
+    node->prev = node->next = node;
 }
 
 static inline bool list_is_head_node(list_head_t *node, list_head_t *head){

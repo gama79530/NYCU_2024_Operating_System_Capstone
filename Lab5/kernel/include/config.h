@@ -5,9 +5,8 @@
 
 /* for I/O */
 #define USE_ASYNC_IO                0
-/* buffer size should be power of 2 */
-#define RX_BUFFER_SIZE              (1 << 6)
-#define TX_BUFFER_SIZE              (1 << 6)
+#define RX_BUFFER_SIZE              (1 << 6)    // buffer size should be power of 2
+#define TX_BUFFER_SIZE              (1 << 6)    // buffer size should be power of 2
 
 /* for shell */
 #define SHELL_BUFFER_MAX_SIZE       256
@@ -33,6 +32,16 @@
 /* for time sharing */
 #define TIME_SHARING_MICROSEC       15000
 
+/* for scheduling, reference to sched.h */
+#include "sched.h"
+#define SCHEDULING_ALGORITHM        ALGORITHM_ROUND_ROBIN
+
+/* for thread management */
+#define KERNEL_THREAD_ORDER         0
+#define USER_THREAD_STACK_ORDER     0
+#define KILL_ZOMBIES_ITER           2
+
+
 /*****************************************************************
  *                      derivative settings                      *                           
  *****************************************************************/
@@ -45,17 +54,21 @@
 
 /* for I/O */
 #if USE_ASYNC_IO == 0
-    #define uart_getb                   uart_poll_getb
-    #define uart_getc                   uart_poll_getc
-    #define uart_putc                   uart_poll_putc
-    #define uart_puts                   uart_poll_puts
-    #define uart_putln                  uart_poll_putln
+    #define uart_getb               uart_poll_getb
+    #define uart_getc               uart_poll_getc
+    #define uart_putc               uart_poll_putc
+    #define uart_puts               uart_poll_puts
+    #define uart_putln              uart_poll_putln
 #else
-    #define uart_getb                   uart_async_getb
-    #define uart_getc                   uart_async_getc
-    #define uart_putc                   uart_async_putc
-    #define uart_puts                   uart_async_puts
-    #define uart_putln                  uart_async_putln
+    #define uart_getb               uart_async_getb
+    #define uart_getc               uart_async_getc
+    #define uart_putc               uart_async_putc
+    #define uart_puts               uart_async_puts
+    #define uart_putln              uart_async_putln
 #endif
+
+/* for thread management */
+#define KERNEL_THREAD_SIZE          (1L << (FRAME_ORDER + KERNEL_THREAD_ORDER))
+#define USER_THREAD_STACK_SIZE      (1L << (FRAME_ORDER + USER_THREAD_STACK_ORDER))
 
 #endif

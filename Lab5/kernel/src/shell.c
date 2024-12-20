@@ -309,7 +309,7 @@ static void command_cat(void){
 static void command_exec(void){
     void *current;
     file_info_t info;
-    char *user_prog;
+    void *user_prog;
     const uint64_t spsr_el1 = 0x340; // DAF masked + EL0t
     const uint64_t load_addr = 0x20000;
     const uint64_t stack_ptr = load_addr + 0x2000;
@@ -332,10 +332,8 @@ static void command_exec(void){
 
             if(!strcmp(tokens[1], info.name)){
                 // copy file to user program load address
-                user_prog = (char*)load_addr;
-                for(int i = 0; i < info.content_size; i++){
-                    user_prog[i] = ((char*)info.content)[i];
-                }
+                user_prog = (void*)load_addr;
+                memcpy(user_prog, info.content, info.content_size);
                 
                 // Switch to EL0 and execute user program
                 asm volatile("msr spsr_el1, %0" : : "r"(spsr_el1));

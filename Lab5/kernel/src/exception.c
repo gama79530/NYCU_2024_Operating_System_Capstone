@@ -29,24 +29,24 @@ void add_waiting_task(irq_task_t *task);
 void execute_waiting_task(void);
 
 const char* entry_error_type[] = {
-    "SYNC_INVALID_EL1t",
-    "IRQ_INVALID_EL1t",
-    "FIQ_INVALID_EL1t",
-    "ERROR_INVALID_EL1t",
-    "SYNC_INVALID_EL1h",
-    "IRQ_INVALID_EL1h",
-    "FIQ_INVALID_EL1h",
-    "ERROR_INVALID_EL1h",
-    "SYNC_INVALID_EL0_64",
-    "IRQ_INVALID_EL0_64",
-    "FIQ_INVALID_EL0_64",
-    "ERROR_INVALID_EL0_64",
-    "SYNC_INVALID_EL0_32",
-    "IRQ_INVALID_EL0_32",
-    "FIQ_INVALID_EL0_32",
-    "ERROR_INVALID_EL0_32",
-    "SYNC_ERROR",
-    "SYSCALL_ERROR"
+    [SYNC_INVALID_EL1t]     = "SYNC_INVALID_EL1t",
+    [IRQ_INVALID_EL1t]      = "IRQ_INVALID_EL1t",
+    [FIQ_INVALID_EL1t]      = "FIQ_INVALID_EL1t",
+    [ERROR_INVALID_EL1t]    = "ERROR_INVALID_EL1t",
+    [SYNC_INVALID_EL1h]     = "SYNC_INVALID_EL1h",
+    [IRQ_INVALID_EL1h]      = "IRQ_INVALID_EL1h",
+    [FIQ_INVALID_EL1h]      = "FIQ_INVALID_EL1h",
+    [ERROR_INVALID_EL1h]    = "ERROR_INVALID_EL1h",
+    [SYNC_INVALID_EL0_64]   = "SYNC_INVALID_EL0_64",
+    [IRQ_INVALID_EL0_64]    = "IRQ_INVALID_EL0_64",
+    [FIQ_INVALID_EL0_64]    = "FIQ_INVALID_EL0_64",
+    [ERROR_INVALID_EL0_64]  = "ERROR_INVALID_EL0_64",
+    [SYNC_INVALID_EL0_32]   = "SYNC_INVALID_EL0_32",
+    [IRQ_INVALID_EL0_32]    = "IRQ_INVALID_EL0_32",
+    [FIQ_INVALID_EL0_32]    = "FIQ_INVALID_EL0_32",
+    [ERROR_INVALID_EL0_32]  = "ERROR_INVALID_EL0_32",
+    [SYNC_ERROR]            = "SYNC_ERROR",
+    [SYSCALL_ERROR]         = "SYSCALL_ERROR",
 };
 
 void show_invalid_entry_message(uint64_t type, uint64_t spsr, uint64_t esr, uint64_t elr){
@@ -145,7 +145,7 @@ void irq_invalid_el1h(void){
 }
 
 void sync_invalid_el0_64(void){
-
+    uart_poll_putln("svc test");//temp
 }
 
 void irq_invalid_el0_64(void){
@@ -197,7 +197,6 @@ irq_task_t* get_blank_task(void){
     }
 
     if(task != NULL){
-        task->head.prev = task->head.next = &task->head;
         task->priority = 255;
         task->callback = NULL;
     }
