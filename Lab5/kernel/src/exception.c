@@ -19,9 +19,9 @@ static LIST_HEAD(blank_irq_tasks_q);
 static LIST_HEAD(waiting_irq_tasks_q);
 
 void show_invalid_entry_message(uint64_t type, uint64_t spsr_el1, uint64_t esr_el1, uint64_t elr_el1);
-void sync_invalid_el1h(void);
 void sync_invalid_el0_64(void);
-void irq_invalid_el0_64(void);
+void irq_el1h(void);
+void irq_el0_64(void);
 
 void irq_handler(void);
 irq_task_t* get_blank_task(void);
@@ -140,7 +140,7 @@ void show_invalid_entry_message(uint64_t type, uint64_t spsr, uint64_t esr, uint
     enable_all_exception();
 }
 
-void irq_invalid_el1h(void){
+void irq_el1h(void){
     irq_handler();
 }
 
@@ -148,7 +148,7 @@ void sync_invalid_el0_64(void){
     uart_poll_putln("svc test");//temp
 }
 
-void irq_invalid_el0_64(void){
+void irq_el0_64(void){
     irq_handler();
 }
 

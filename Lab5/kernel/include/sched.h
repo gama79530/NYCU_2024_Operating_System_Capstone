@@ -48,8 +48,8 @@ typedef struct task_struct{
 typedef struct user_thread{
     uint64_t        regs[31];
     uint64_t        sp;
-    uint64_t        pstate;
-    uint64_t        pc;
+    uint64_t        pstate; // SPSR_EL1
+    uint64_t        pc;     // ELR_EL1
 } user_thread_t;
 
 extern task_struct_t* get_current_task(void);
@@ -65,6 +65,7 @@ void disable_preemption(void);
 void idle(void);
 void schedule();
 void exit(void);
+void wait(void);
 
 #endif
 #endif

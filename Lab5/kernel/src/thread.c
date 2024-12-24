@@ -7,7 +7,7 @@
 #include "arm_v8.h"
 
 extern list_head_t running_task_q;
-extern list_head_t waiting_task_q;
+extern list_head_t waiting_task_s;
 extern list_head_t terminated_task_q;
 extern void thread_start(void);
 
@@ -21,12 +21,12 @@ int thread_create(uint64_t flag, task_routine_t routine, void *arg){
         return -1;
     }
 
-    user_thread_t *user_thread = get_user_thread(new_task);
-    memzero(user_thread, S_FRAME_SIZE);
+    user_thread_t *child_thread = get_user_thread(new_task);
+    memzero(child_thread, S_FRAME_SIZE);
     memzero((void*)&new_task->cpu_context, sizeof(cpu_context_t));
     new_task->head.prev = new_task->head.next = &new_task->head;
 
-    if(routine == NULL){
+    if(routine != NULL){
         new_task->cpu_context.x19 = (uint64_t)routine;
         new_task->cpu_context.x20 = (uint64_t)arg;
         new_task->cpu_context.x21 = (flag & FLAG_ENTER_USER_MODE);
@@ -38,13 +38,13 @@ int thread_create(uint64_t flag, task_routine_t routine, void *arg){
             return -1;
         }
         user_thread_t *current_thread = get_user_thread(current_task);
-        *user_thread = *current_thread;
-        user_thread->regs[0] = 0;
-        user_thread->sp = new_task->user_stack + USER_THREAD_STACK_SIZE;
+        *child_thread = *current_thread;
+        child_thread->regs[0] = 0;
+        child_thread->sp = new_task->user_stack + USER_THREAD_STACK_SIZE;
         if(flag & FLAG_FORK){
             uint64_t offset = current_task->user_stack + USER_THREAD_STACK_SIZE - current_thread->sp;
-            user_thread->sp -= offset;
-            memcpy((void*)user_thread->sp, (void*)current_thread->sp, offset);
+            child_thread->sp -= offset;
+            memcpy((void*)child_thread->sp, (void*)current_thread->sp, offset);
         }
     }
 
@@ -53,11 +53,11 @@ int thread_create(uint64_t flag, task_routine_t routine, void *arg){
     new_task->state = RUNNING;
     new_task->is_preemptive = false;
     new_task->cpu_context.x30 = (uint64_t)thread_start;
-	new_task->cpu_context.sp = (uint64_t)user_thread;
-	list_append(&new_task->head, &running_task_q);
+    new_task->cpu_context.sp = (uint64_t)child_thread;
+    list_append(&new_task->head, &running_task_q);
     enable_preemption();
 
-	return new_task->pid;
+    return new_task->pid;
 }
 
 user_thread_t* get_user_thread(task_struct_t *task){

@@ -99,6 +99,10 @@ void timer_add_timeout_event(time_unit_t unit, uint64_t countdown, uint64_t peri
     add_waiting_event(event);
 }
 
+#pragma warning
+bool use = true;
+uint64_t offset = 4999;
+
 void irq_timer_event(void){
     timer_event_t *event = NULL;
     uint64_t current_time;
@@ -118,7 +122,10 @@ void irq_timer_event(void){
 
         if(event->period){
             event->registration_time = current_time;
-            event->expired_time = current_time + event->period;
+            // event->expired_time = current_time + event->period;
+#pragma warning
+event->expired_time = current_time + event->period + use * offset;
+use = !use;
             add_waiting_event(event);
         }else{
             free(event);

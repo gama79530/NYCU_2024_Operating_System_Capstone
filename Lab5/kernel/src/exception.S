@@ -135,7 +135,7 @@ handler_el1_4:
 
 handler_el1_5:
     save_state 1
-    bl      irq_invalid_el1h
+    bl      irq_el1h
     load_state 1
 
 handler_el1_6:
@@ -180,7 +180,7 @@ invalid_syscall:
 
 handler_el1_9:
     save_state 0
-    bl      irq_invalid_el0_64
+    bl      irq_el0_64
     load_state 0
 
 handler_el1_10:

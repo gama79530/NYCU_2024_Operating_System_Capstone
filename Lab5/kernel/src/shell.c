@@ -9,8 +9,9 @@
 #include "timer.h"
 #include "memory.h"
 #include "frame.h"
-// #include "sched.h"
+#include "sched.h"
 #include "util.h"
+#include "thread.h"
 
 static char buffer[SHELL_BUFFER_MAX_SIZE] = {0};
 static int len;
@@ -47,7 +48,7 @@ static void command_timer(void);
 static void command_malloc(void);
 static void command_free(void);
 static void command_memory_layout(void);
-// static void command_thread_demo(void);
+static void command_thread_demo(void);
 
 // for command_mailbox
 void get_board_revision(void);
@@ -57,9 +58,11 @@ void get_arm_memory_info(void);
 void shell_timer_event_cb(void *arg);
 
 // for command_thread_demo
-// void demo_task(void *arg);
+void demo_task(void *arg);
 
 void shell(void){
+    // command_thread_demo();
+    #pragma warning
     int err_code = 0;
     printf("Welcome to the OGC shell. Use \"help\" for information on supported commands.\n");
     while(true){
@@ -141,32 +144,37 @@ static int parse_command(void){
 }
 
 static void execute_command(void){
+    task_routine_t routine = NULL;
     if(!strncmp(tokens[0], "help", SHELL_TOKEN_MAX_LEN)){
-        command_help();
+        routine = (task_routine_t)command_help;
     }else if(!strncmp(tokens[0], "hello", SHELL_TOKEN_MAX_LEN)){
-        command_hello();
+        routine = (task_routine_t)command_hello;
     }else if(!strncmp(tokens[0], "mailbox", SHELL_TOKEN_MAX_LEN)){
-        command_mailbox();
+        routine = (task_routine_t)command_mailbox;
     }else if(!strncmp(tokens[0], "reboot", SHELL_TOKEN_MAX_LEN)){
-        command_reboot();
+        routine = (task_routine_t)command_reboot;
     }else if(!strncmp(tokens[0], "ls", SHELL_TOKEN_MAX_LEN)){
-        command_ls();
+        routine = (task_routine_t)command_ls;
     }else if(!strncmp(tokens[0], "cat", SHELL_TOKEN_MAX_LEN)){
-        command_cat();
+        routine = (task_routine_t)command_cat;
     }else if(!strncmp(tokens[0], "exec", SHELL_TOKEN_MAX_LEN)){
-        command_exec();
+        routine = (task_routine_t)command_exec;
     }else if(!strncmp(tokens[0], "timer", SHELL_TOKEN_MAX_LEN)){
-        command_timer();
+        routine = (task_routine_t)command_timer;
     }else if(!strncmp(tokens[0], "malloc", SHELL_TOKEN_MAX_LEN)){
-        command_malloc();
+        routine = (task_routine_t)command_malloc;
     }else if(!strncmp(tokens[0], "free", SHELL_TOKEN_MAX_LEN)){
-        command_free();
+        routine = (task_routine_t)command_free;
     }else if(!strncmp(tokens[0], "memory_layout", SHELL_TOKEN_MAX_LEN)){
-        command_memory_layout();
-    // }else if(!strncmp(tokens[0], "thread_demo", SHELL_TOKEN_MAX_LEN)){
-    //     command_thread_demo();
+        routine = (task_routine_t)command_memory_layout;
+    }else if(!strncmp(tokens[0], "thread_demo", SHELL_TOKEN_MAX_LEN)){
+        routine = (task_routine_t)command_thread_demo;
     }else{
         printf("Unsupported command: %s\n""\n", buffer);
+    }
+    if(routine != NULL){
+        thread_create(0, routine, NULL);
+        wait();
     }
 }
 
@@ -189,7 +197,7 @@ static void command_help(void){
         "malloc*\t\t: Allocates and returns a pointer to the allocated memory.\n"
         "free*\t\t: Deallocated memory.\n"
         "memory_layout\t: Display the current layout of memory system.\n"
-        // "thread_demo\t: Demo thread creation.\n"
+        "thread_demo\t: Demo thread creation.\n"
         "\n"
     );
 }
@@ -420,13 +428,16 @@ static void command_memory_layout(void){
     printf("\n");
 }
 
-// #define DEMO_THREAD_NUM 3
-// #define DEMO_LOOP_NUM   10
-// static void command_thread_demo(void){
-//     for(int i = 0; i < DEMO_THREAD_NUM; i++)
-//         thread_create(demo_task, NULL);
-    
-// }
+#pragma warning
+#define DEMO_THREAD_NUM 3
+#define DEMO_LOOP_NUM   10
+static void command_thread_demo(void){
+    for(int i = 0; i < DEMO_THREAD_NUM; i++){
+        thread_create(0, demo_task, NULL);
+    }
+    wait();
+    printf("\n");
+}
 
 void get_board_revision(void){
     mbox[0] = 7 * 4; // buffer size in bytes
@@ -466,13 +477,13 @@ void get_arm_memory_info(void){
     }
 }
 
-// void demo_task(void *arg){
-//     for(int i = 0; i < DEMO_LOOP_NUM; i++){
-//         printf("\rThread id: %d, i = %d\n$ ", get_current_task()->pid, i);
-//         wait_cycles(1000000);
-//         schedule();
-//     }
-// }
+void demo_task(void *arg){
+    for(int i = 0; i < DEMO_LOOP_NUM; i++){
+        printf("\rThread id: %d, i = %d\n", get_current_pid(), i);
+        wait_cycles(1000000);
+        schedule();
+    }
+}
 
 void shell_timer_event_cb(void *arg){
     printf("\r");

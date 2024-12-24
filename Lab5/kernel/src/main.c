@@ -9,6 +9,7 @@
 #include "frame.h"
 #include "memory.h"
 #include "sched.h"
+#include "thread.h"
 
 extern char kernel_begin;
 extern char kernel_end;
@@ -63,5 +64,6 @@ void kernel_main(uint64_t x0){
     if(kernel_service_init(x0)){
         return;
     }
-    shell();
+    thread_create(0, (task_routine_t)shell, NULL);
+    idle();
 }

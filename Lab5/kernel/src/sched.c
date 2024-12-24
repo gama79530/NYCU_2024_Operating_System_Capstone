@@ -19,7 +19,7 @@ static task_struct_t init_task = {
 };
 
 LIST_HEAD(running_task_q);
-LIST_HEAD(waiting_task_q);
+LIST_HEAD(waiting_task_s);
 LIST_HEAD(terminated_task_q);
 
 task_struct_t* get_next_task(void);
@@ -58,21 +58,29 @@ void schedule(){
                 list_append(&current_task->head, &running_task_q);
                 break;
             case WAITING:
-                list_append(&current_task->head, &waiting_task_q);
+                list_append(&current_task->head, &waiting_task_s);
                 break;
             case ZOMBIE:
                 list_append(&current_task->head, &terminated_task_q);
                 break;
         }
+        set_current_task(next_task);
         cpu_switch_to(current_task, next_task);
     }
     enable_preemption();
 }
 
 task_struct_t* round_robin(void){
-    if(list_is_empty(&running_task_q))  return NULL;
-    task_struct_t *next_task = container_of(running_task_q.next, task_struct_t, head);
-    list_remove(&next_task->head);
+    task_struct_t *next_task = NULL;
+    if(!list_is_empty(&running_task_q)){
+        next_task = container_of(running_task_q.next, task_struct_t, head);
+        list_remove(&next_task->head);
+    }else if(!list_is_empty(&waiting_task_s)){
+        next_task = container_of(waiting_task_s.prev, task_struct_t, head);
+        next_task->state = RUNNING;
+        list_remove(&next_task->head);
+    }
+
     return next_task;
 }
 
@@ -121,4 +129,12 @@ void idle(void){
         kill_zombies();
         schedule();
     }
+}
+
+void wait(void){
+    disable_preemption();
+    task_struct_t *current = get_current_task();
+    current->state = WAITING;
+    enable_preemption();
+    schedule();
 }
