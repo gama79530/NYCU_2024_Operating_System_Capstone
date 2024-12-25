@@ -25,6 +25,7 @@ LIST_HEAD(terminated_task_q);
 task_struct_t* get_next_task(void);
 task_struct_t* round_robin(void);
 void kill_zombies(void);
+task_struct_t* find_task_by_pid(int pid);
 
 int scheduling_init(void){
     set_current_task(&init_task);
@@ -143,4 +144,28 @@ void wait(void){
     current->state = WAITING;
     enable_preemption();
     schedule();
+}
+
+task_struct_t* find_task_by_pid(int pid){
+    disable_preemption();
+    if(pid == get_current_pid()){
+        return get_current_task();
+    }
+    for(list_head_t *current = running_task_q.next; current != &running_task_q; current = current->next){
+        task_struct_t *task = container_of(current, task_struct_t, head);
+        if(pid == task->pid)    return task;
+    }
+    for(list_head_t *current = waiting_task_s.next; current != &running_task_q; current = current->next){
+        task_struct_t *task = container_of(current, task_struct_t, head);
+        if(pid == task->pid)    return task;
+    }
+    enable_preemption();
+
+    return NULL;
+}
+
+void kill(int pid){
+    disable_preemption();
+
+    enable_preemption();
 }

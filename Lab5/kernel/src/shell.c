@@ -447,7 +447,7 @@ void get_board_revision(void){
     mbox[6] = MBOX_TAG_END;
     // tags end
 
-    if(mailbox_call(MBOX_CH_PROP)){
+    if(mailbox_call(MBOX_CH_PROP, (uint32_t*)mbox)){
         printf("Board revision\t: 0x%s\n", uint_to_hex_str(mbox[5], 0, NULL));
     }else{
         printf("Mailbox error: get_board_revision()");
@@ -466,7 +466,7 @@ void get_arm_memory_info(void){
     mbox[7] = MBOX_TAG_END;
     // tags end
 
-    if(mailbox_call(MBOX_CH_PROP)){
+    if(mailbox_call(MBOX_CH_PROP, (uint32_t*)mbox)){
         printf("ARM memory base\t: 0x%s\n", uint_to_hex_str(mbox[5], 0, NULL));
         printf("ARM memory size\t: 0x%s\n", uint_to_hex_str(mbox[6], 0, NULL));
     }else{

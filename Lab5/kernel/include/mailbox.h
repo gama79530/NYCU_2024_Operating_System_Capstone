@@ -68,6 +68,6 @@
 
 extern volatile uint32_t mbox[36]; // a properly aligned buffer 
 
-int mailbox_call(uint8_t channel);
+int mailbox_call(uint8_t channel, uint32_t *mailbox);
 
 #endif

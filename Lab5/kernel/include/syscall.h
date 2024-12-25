@@ -15,14 +15,14 @@
 #ifndef __ASSEMBLER__
 #include "types.h"
 
-// extern int syscall_getpid(void);
-// extern size_t syscall_uart_read(char buffer[], size_t size);
-// extern size_t syscall_uart_write(const char buffer[], size_t size);
-// extern int syscall_exec(const char *name, char *const argv[]);
-// extern int syscall_fork(void);
-// extern void syscall_exit(void);
-// extern int syscall_mailbox_call(uint8_t channel, uint32_t *mbox);
-// extern void syscall_kill(int pid);
+extern int syscall_getpid(void);
+extern size_t syscall_uart_read(char buffer[], size_t size);
+extern size_t syscall_uart_write(const char buffer[], size_t size);
+extern int syscall_exec(const char *name, char *const argv[]);
+extern int syscall_fork(void);
+extern void syscall_exit(void);
+extern int syscall_mailbox_call(uint8_t channel, uint32_t *mbox);
+extern void syscall_kill(int pid);
 
 #endif
 #endif
