@@ -59,7 +59,6 @@ extern void cpu_switch_to(task_struct_t *prev, task_struct_t *next);
 int scheduling_init(void);
 int get_current_pid(void);
 int get_new_pid(void);
-task_struct_t* find_task_by_pid(int pid);
 
 void enable_preemption(void);
 void disable_preemption(void);

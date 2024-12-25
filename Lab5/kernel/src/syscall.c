@@ -83,5 +83,5 @@ int sys_mailbox_call(uint8_t channel, uint32_t *mailbox){
 }
 
 void sys_kill(int pid){
-
+    kill(pid);
 }

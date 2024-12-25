@@ -146,7 +146,6 @@ handler_el1_7:
 
 // sync_invalid_el0_64
 handler_el1_8:
-//    bl      sync_invalid_el0_64 //temp  
     save_state 0
     mrs     x25, esr_el1
     lsr     x24, x25, #ESR_ELx_EC_SHIFT

@@ -78,17 +78,36 @@ void schedule(){
 }
 
 task_struct_t* round_robin(void){
-    task_struct_t *next_task = NULL;
-    if(!list_is_empty(&running_task_q)){
+    task_struct_t *next_task;
+    while(!list_is_empty(&running_task_q)){
         next_task = container_of(running_task_q.next, task_struct_t, head);
         list_remove(&next_task->head);
-    }else if(!list_is_empty(&waiting_task_s)){
+        switch(next_task->state){
+            case RUNNING:
+                return next_task;
+            case WAITING:
+                list_append(&next_task->head, &waiting_task_s);
+                break;
+            case ZOMBIE:
+                list_append(&next_task->head, &terminated_task_q);
+                break;
+        }
+    }
+    while(!list_is_empty(&waiting_task_s)){
         next_task = container_of(waiting_task_s.prev, task_struct_t, head);
-        next_task->state = RUNNING;
         list_remove(&next_task->head);
+        switch(next_task->state){
+            case RUNNING:
+            case WAITING:
+                next_task->state = RUNNING;
+                return next_task;
+            case ZOMBIE:
+                list_append(&next_task->head, &terminated_task_q);
+                break;
+        }
     }
 
-    return next_task;
+    return NULL;
 }
 
 void exit(void){
@@ -147,7 +166,6 @@ void wait(void){
 }
 
 task_struct_t* find_task_by_pid(int pid){
-    disable_preemption();
     if(pid == get_current_pid()){
         return get_current_task();
     }
@@ -159,13 +177,14 @@ task_struct_t* find_task_by_pid(int pid){
         task_struct_t *task = container_of(current, task_struct_t, head);
         if(pid == task->pid)    return task;
     }
-    enable_preemption();
-
     return NULL;
 }
 
 void kill(int pid){
     disable_preemption();
-
+    task_struct_t* task = find_task_by_pid(pid);
+    if(task != NULL){
+        task->state = ZOMBIE;
+    }
     enable_preemption();
 }

@@ -29,7 +29,6 @@ int thread_create(uint64_t flag, task_routine_t routine, void *arg){
     if(routine != NULL){
         new_task->cpu_context.x19 = (uint64_t)routine;
         new_task->cpu_context.x20 = (uint64_t)arg;
-        new_task->cpu_context.x21 = (flag & FLAG_ENTER_USER_MODE);
         new_task->user_stack = 0;
     }else{
         new_task->user_stack = (uint64_t)frame_alloc(USER_THREAD_STACK_ORDER);  // allocate new user stack
@@ -47,6 +46,7 @@ int thread_create(uint64_t flag, task_routine_t routine, void *arg){
             memcpy((void*)child_thread->sp, (void*)current_thread->sp, offset);
         }
     }
+    new_task->cpu_context.x21 = (flag & FLAG_ENTER_USER_MODE);
 
     new_task->flag = flag;
     new_task->pid = get_new_pid();

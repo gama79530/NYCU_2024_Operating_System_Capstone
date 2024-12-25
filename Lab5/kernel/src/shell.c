@@ -12,6 +12,7 @@
 #include "sched.h"
 #include "util.h"
 #include "thread.h"
+#include "syscall.h"
 
 static char buffer[SHELL_BUFFER_MAX_SIZE] = {0};
 static int len;
@@ -49,6 +50,7 @@ static void command_malloc(void);
 static void command_free(void);
 static void command_memory_layout(void);
 static void command_thread_demo(void);
+static void command_syscall_demo(void);
 
 // for command_mailbox
 void get_board_revision(void);
@@ -59,6 +61,10 @@ void shell_timer_event_cb(void *arg);
 
 // for command_thread_demo
 void demo_task(void *arg);
+
+// for command_syscall_demo
+void user_program(void);
+void syscall_demo(void);
 
 void shell(void){
     int err_code = 0;
@@ -167,6 +173,8 @@ static void execute_command(void){
         routine = (task_routine_t)command_memory_layout;
     }else if(!strncmp(tokens[0], "thread_demo", SHELL_TOKEN_MAX_LEN)){
         routine = (task_routine_t)command_thread_demo;
+    }else if(!strncmp(tokens[0], "syscall_demo", SHELL_TOKEN_MAX_LEN)){
+        routine = (task_routine_t)command_syscall_demo;
     }else{
         printf("Unsupported command: %s\n""\n", buffer);
     }
@@ -195,7 +203,8 @@ static void command_help(void){
         "malloc*\t\t: Allocates and returns a pointer to the allocated memory.\n"
         "free*\t\t: Deallocated memory.\n"
         "memory_layout\t: Display the current layout of memory system.\n"
-        "thread_demo\t: Demo thread creation.\n"
+        "thread_demo\t: Demo thread function.\n"
+        "syscall_demo\t: Demo system call functions.\n"
         "\n"
     );
 }
@@ -492,4 +501,49 @@ void shell_timer_event_cb(void *arg){
         free(arg);
     }
     new_line();
+}
+
+static void command_syscall_demo(void){
+    thread_create(FLAG_ENTER_USER_MODE, (task_routine_t)syscall_demo, NULL);
+    wait();
+    printf("\n");
+}
+
+void syscall_demo(void){
+    printf("Kernel thread start! Current EL is %d\n", get_current_el());
+    int err = enter_user_mode((uint64_t)user_program);
+    if(err < 0){
+        printf("Error while enter user mode!\n");
+        return;
+    }
+}
+
+void user_program(void){
+    printf("User thread start!\n");
+    printf("Fork Test, pid: %d\n", syscall_getpid());
+    int cnt = 1;
+    int ret = 0;
+
+    if((ret = syscall_fork()) == 0){    //child
+        long long cur_sp;
+        asm volatile("mov %0, sp" : "=r"(cur_sp));
+        printf("first child pid: %d, cnt: %d, ptr: 0x%x, sp : 0x%x\n", syscall_getpid(), cnt, &cnt, cur_sp);
+        ++cnt;
+
+        if ((ret = syscall_fork()) != 0){
+            asm volatile("mov %0, sp" : "=r"(cur_sp));
+            printf("first child pid: %d, cnt: %d, ptr: 0x%x, sp : 0x%x\n", syscall_getpid(), cnt, &cnt, cur_sp);
+        }else{
+            while (cnt < 5){
+                asm volatile("mov %0, sp" : "=r"(cur_sp));
+                printf("second child pid: %d, cnt: %d, ptr: 0x%x, sp : 0x%x\n", syscall_getpid(), cnt, &cnt, cur_sp);
+                wait_cycles(1000000);
+                ++cnt;
+            }
+        }
+    }else{
+        printf("parent here, pid: %d, child pid: %d\n", syscall_getpid(), ret);
+    }
+
+    syscall_exit();
 }
