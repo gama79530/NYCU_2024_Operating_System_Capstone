@@ -61,8 +61,6 @@ void shell_timer_event_cb(void *arg);
 void demo_task(void *arg);
 
 void shell(void){
-    // command_thread_demo();
-    #pragma warning
     int err_code = 0;
     printf("Welcome to the OGC shell. Use \"help\" for information on supported commands.\n");
     while(true){
@@ -428,7 +426,6 @@ static void command_memory_layout(void){
     printf("\n");
 }
 
-#pragma warning
 #define DEMO_THREAD_NUM 3
 #define DEMO_LOOP_NUM   10
 static void command_thread_demo(void){

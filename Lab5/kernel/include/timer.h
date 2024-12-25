@@ -19,4 +19,8 @@ uint64_t timer_get_current_time(time_unit_t unit);
 void timer_add_timeout_event(time_unit_t unit, uint64_t countdown, uint64_t period, timer_event_cb_t callback, void *arg);
 void irq_timer_event(void);
 
+void enable_time_sharing(void);
+void disable_time_sharing(void);
+bool get_time_sharing_flag(void);
+
 #endif

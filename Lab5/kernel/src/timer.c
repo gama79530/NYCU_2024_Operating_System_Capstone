@@ -4,8 +4,9 @@
 #include "memory.h"
 #include "exception.h"
 #include "util.h"
-
-static LIST_HEAD(waiting_event_q);
+#include "sched.h"
+#include "config.h"
+#include "exception.h"
 
 typedef struct timer_event{
     list_head_t             head;
@@ -15,6 +16,17 @@ typedef struct timer_event{
     timer_event_cb_t        callback;
     void                    *arg;
 } timer_event_t;
+
+static LIST_HEAD(waiting_event_q);
+timer_event_t time_sharing_event = {
+    {&time_sharing_event.head, &time_sharing_event.head},
+    0,
+    0,
+    TIME_SHARING_MICROSEC,
+    (timer_event_cb_t)schedule,
+    NULL
+};
+bool time_sharing_flag = false;
 
 void add_waiting_event(timer_event_t *event);
 
@@ -99,10 +111,6 @@ void timer_add_timeout_event(time_unit_t unit, uint64_t countdown, uint64_t peri
     add_waiting_event(event);
 }
 
-#pragma warning
-bool use = true;
-uint64_t offset = 4999;
-
 void irq_timer_event(void){
     timer_event_t *event = NULL;
     uint64_t current_time;
@@ -122,10 +130,7 @@ void irq_timer_event(void){
 
         if(event->period){
             event->registration_time = current_time;
-            // event->expired_time = current_time + event->period;
-#pragma warning
-event->expired_time = current_time + event->period + use * offset;
-use = !use;
+            event->expired_time = current_time + event->period;
             add_waiting_event(event);
         }else{
             free(event);
@@ -152,4 +157,34 @@ void add_waiting_event(timer_event_t *event){
         timer_set_countdown(countdown, MICROSECOND);
         core_timer_enable();
     }
+}
+
+void enable_time_sharing(void){
+    if(!time_sharing_flag){
+        time_sharing_event.registration_time = timer_get_current_time(MICROSECOND);
+        time_sharing_event.expired_time = time_sharing_event.registration_time + TIME_SHARING_MICROSEC;
+        add_waiting_event(&time_sharing_event);
+        time_sharing_flag = true;
+    }
+}
+
+void disable_time_sharing(void){
+    if(time_sharing_flag){
+        disable_irq();
+        list_remove(&time_sharing_event.head);
+        core_timer_disable();
+        if(!list_is_empty(&waiting_event_q)){
+            int current = timer_get_current_time(MICROSECOND);
+            timer_event_t *event = container_of(waiting_event_q.next, timer_event_t, head);
+            int countdown = event->expired_time < current + 10 ? 10 : event->expired_time - current;
+            timer_set_countdown(countdown, MICROSECOND);
+            core_timer_enable();
+        }
+        enable_irq();
+        time_sharing_flag = false;
+    }
+}
+
+bool get_time_sharing_flag(void){
+    return time_sharing_flag;
 }
