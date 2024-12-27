@@ -11,7 +11,6 @@
 #define BUDDY_STATE_BUDDY_GROUPED   ((int8_t)0x82)
 #define BUDDY_STATE_ERROR           ((int8_t)0x83)
 
-static void *memory_base = (void*)MEMORY_BASE;
 static int8_t *buddy_order_array = NULL;
 static list_head_t *buddy_group_lists = NULL;
 
@@ -135,7 +134,7 @@ int buddy_sys_build(void){
 }
 
 void* frame_idx_to_address(uint64_t frame_idx){
-    return frame_idx < FRAME_NUM ? memory_base + (frame_idx << FRAME_ORDER) : NULL;    
+    return frame_idx < FRAME_NUM ? (void*)(MEMORY_BASE + (frame_idx << FRAME_ORDER)) : NULL;    
 }
 
 uint64_t address_to_frame_idx(void *ptr){
@@ -157,7 +156,7 @@ static bool group_buddy(uint64_t *frame_idx_ptr){
     buddy_idx = frame_idx ^ (1UL << (uint64_t)buddy_order_array[frame_idx]);
     if(frame_idx > buddy_idx)   swap(frame_idx, buddy_idx);
 
-    if(buddy_idx < FRAME_NUM && buddy_order_array[frame_idx] != buddy_order_array[buddy_idx]){
+    if(buddy_idx >= FRAME_NUM || buddy_order_array[frame_idx] != buddy_order_array[buddy_idx]){
         return false;
     }
 

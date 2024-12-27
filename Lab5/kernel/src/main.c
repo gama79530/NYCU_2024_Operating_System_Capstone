@@ -33,17 +33,19 @@ int kernel_service_init(uint64_t x0){
     if(buddy_sys_init()){
         return -1;
     }
-    buddy_sys_preserve_memory(
-        (void*)SPIN_TABLE_BASE, 
-        (void*)SPIN_TABLE_BOUNDARY, 
-        "Preserve spin tables for multicore boot"
-    );
-    buddy_sys_preserve_memory((void*)&kernel_begin, (void*)&kernel_end, "Preserve kernel image");
-    buddy_sys_preserve_memory(get_cpio_base(), get_cpio_boundary(), "Preserve ram disk");
-    buddy_sys_preserve_memory(get_dtb_ptr(), get_dtb_ptr() + get_dtb_size(), "Preserve device tree");
-    buddy_sys_preserve_memory((void*)&startup_heap_base, (void*)&startup_heap_boundary, "Preserve startup heap");
-    buddy_sys_preserve_memory((void*)&kernel_begin - (1 << 10), (void*)&kernel_begin, "Preserve 1 kb for kernel stack");
-    buddy_sys_build();
+    if(buddy_sys_preserve_memory((void*)SPIN_TABLE_BASE, (void*)SPIN_TABLE_BOUNDARY, 
+       "Preserve spin tables for multicore boot"))                      return -1;
+    if(buddy_sys_preserve_memory((void*)&kernel_begin, (void*)&kernel_end, 
+       "Preserve kernel image"))                                        return -1;
+    if(buddy_sys_preserve_memory(get_cpio_base(), get_cpio_boundary(), 
+       "Preserve ram disk"))                                            return -1;
+    if(buddy_sys_preserve_memory(get_dtb_ptr(), get_dtb_ptr() + get_dtb_size(), 
+       "Preserve device tree"))                                         return -1;
+    if(buddy_sys_preserve_memory((void*)&startup_heap_base, (void*)&startup_heap_boundary, 
+       "Preserve startup heap"))                                        return -1;
+    if(buddy_sys_preserve_memory((void*)&kernel_begin - (1 << 10), (void*)&kernel_begin, 
+       "Preserve 1 kb for kernel stack"))                               return -1;
+    if(buddy_sys_build())                                               return -1;
 
     /* build memory system */
     if(memory_sys_init()){
