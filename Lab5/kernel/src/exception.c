@@ -169,7 +169,7 @@ void irq_handler(void){
             task->callback = uart_irq_task_cb_tx;
         }
     }else if(get32(CORE0_IRQ_SOURCE) & CNTPNSIRQ){  // timer IRQ
-        core_timer_disable();
+        disable_core0_timer();
         task = get_blank_task();
         task->priority = TIMER_IRQ_PRIORITY;
         task->callback = irq_timer_event;

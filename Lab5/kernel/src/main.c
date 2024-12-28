@@ -10,6 +10,7 @@
 #include "memory.h"
 #include "sched.h"
 #include "thread.h"
+#include "timer.h"
 
 extern char kernel_begin;
 extern char kernel_end;
@@ -49,6 +50,11 @@ int kernel_service_init(uint64_t x0){
 
     /* build memory system */
     if(memory_sys_init()){
+        return -1;
+    }
+
+    /* initialize timer */
+    if(timer_init()){
         return -1;
     }
 

@@ -4,7 +4,7 @@
 #define VERBOSE                     0
 
 /* for I/O */
-#define USE_ASYNC_IO                1
+#define USE_ASYNC_IO                0
 #define RX_BUFFER_SIZE              (1 << 6)    // buffer size should be power of 2
 #define TX_BUFFER_SIZE              (1 << 6)    // buffer size should be power of 2
 

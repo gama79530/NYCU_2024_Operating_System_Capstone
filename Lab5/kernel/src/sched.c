@@ -29,6 +29,7 @@ task_struct_t* find_task_by_pid(int pid);
 
 int scheduling_init(void){
     set_current_task(&init_task);
+    set_time_sharing_period(get_count_frequency() >> 5);
     enable_time_sharing();
 #if VERBOSE != 0
     printf("***** scheduling_init success *****\n");
@@ -52,9 +53,9 @@ void schedule(){
     task_struct_t *current_task = get_current_task();
     if(!current_task->is_preemptive)    return;
     disable_preemption();
-    if(get_time_sharing_flag()){
-        disable_time_sharing();
-    }
+    // if(get_time_sharing_flag()){
+    //     disable_time_sharing();
+    // }
     task_struct_t *next_task = get_next_task();
     if(next_task != NULL){
         switch(current_task->state){
@@ -71,9 +72,9 @@ void schedule(){
         set_current_task(next_task);
         cpu_switch_to(current_task, next_task);
     }
-    if(get_time_sharing_flag()){
-        enable_time_sharing();
-    }
+    // if(get_time_sharing_flag()){
+    //     enable_time_sharing();
+    // }
     enable_preemption();
 }
 

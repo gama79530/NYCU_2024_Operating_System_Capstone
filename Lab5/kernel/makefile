@@ -6,6 +6,7 @@ ASMCFLAGS = -Iinclude
 BUILD_DIR = build
 SRC_DIR = src
 
+ARGS = -M raspi3b -kernel kernel8.img -serial null -serial stdio
 CPIO = -initrd ../loader/initramfs.cpio
 DTB = -dtb ../loader/bcm2710-rpi-3-b.dtb
 
@@ -40,11 +41,20 @@ clean:
 	clear
 	rm -rf $(BUILD_DIR) *.img
 
+run: ARGS += -display none
 run: 
-	qemu-system-aarch64 -M raspi3b -kernel kernel8.img -display none -serial null -serial stdio $(CPIO) $(DTB)
+	qemu-system-aarch64 $(ARGS) $(CPIO) $(DTB)
 	
+qemu: ARGS += -display none -S -s
 qemu: 
-	qemu-system-aarch64 -M raspi3b -kernel kernel8.img -serial null -serial stdio -display none -S -s $(CPIO) $(DTB)
+	qemu-system-aarch64 $(ARGS) $(CPIO) $(DTB)
+
+display:
+	qemu-system-aarch64 $(ARGS) $(CPIO) $(DTB)
+
+qemu-display: ARGS += -S -s
+qemu-display:
+	qemu-system-aarch64 $(ARGS) $(CPIO) $(DTB)
 
 gdb:
 	gdb-multiarch build/kernel8.elf

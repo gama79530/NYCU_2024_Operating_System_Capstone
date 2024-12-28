@@ -149,6 +149,7 @@ static int parse_command(void){
 
 static void execute_command(void){
     task_routine_t routine = NULL;
+    uint64_t flag = 0;
     if(!strncmp(tokens[0], "help", SHELL_TOKEN_MAX_LEN)){
         routine = (task_routine_t)command_help;
     }else if(!strncmp(tokens[0], "hello", SHELL_TOKEN_MAX_LEN)){
@@ -179,7 +180,7 @@ static void execute_command(void){
         printf("Unsupported command: %s\n""\n", buffer);
     }
     if(routine != NULL){
-        thread_create(0, routine, NULL);
+        thread_create(flag, routine, NULL);
         wait();
     }
 }
@@ -322,12 +323,12 @@ static void command_cat(void){
 }
 
 static void command_exec(void){
-    void *current;
-    file_info_t info;
-    void *user_prog;
-    const uint64_t spsr_el1 = 0x340; // DAF masked + EL0t
-    const uint64_t load_addr = 0x20000;
-    const uint64_t stack_ptr = load_addr + 0x2000;
+    // void *current;
+    // file_info_t info;
+    // void *user_prog;
+    // const uint64_t spsr_el1 = 0x340; // DAF masked + EL0t
+    // const uint64_t load_addr = 0x20000;
+    // const uint64_t stack_ptr = load_addr + 0x2000;
 
     is_help(
         printf("{file name}\t: The file name of the program. You can specify exactly one file at a time.\n");
@@ -338,27 +339,33 @@ static void command_exec(void){
     }else if(token_num > 2){
         printf("You cannot assign more than one program at a time.\n");
     }else{
-        current = get_cpio_base();
-        while(current != NULL){
-            // extract file info
-            if(cpio_file_iter(&current, &info)){ // abnormal iter 
-                break;
-            }
+        void *cursor = get_cpio_base();
+        file_info_t info;
+        int iter_ret = 0;
+        void *user_program = NULL;
+        bool find = false;
 
-            if(!strcmp(tokens[1], info.name)){
+        while(cursor != NULL){
+            // extract file info
+            iter_ret = cpio_file_iter(&cursor, &info);
+            if(iter_ret == CPIO_ITER_EOF){
+                break;
+            }else if(iter_ret){
+                printf("cpio_file_iter fail!\n");
+                break;
+            }else if(!strcmp(tokens[1], info.name)){
+                find = true;
                 // copy file to user program load address
-                user_prog = (void*)load_addr;
-                memcpy(user_prog, info.content, info.content_size);
-                
-                // Switch to EL0 and execute user program
-                asm volatile("msr spsr_el1, %0" : : "r"(spsr_el1));
-                asm volatile("msr elr_el1, %0" : : "r"(load_addr));
-                asm volatile("msr sp_el0, %0" : : "r"(stack_ptr));
-                asm volatile("eret");
+                user_program = malloc(info.content_size);
+                memcpy(user_program, info.content, info.content_size);
+            
+                thread_create(FLAG_ENTER_USER_MODE, (task_routine_t)enter_user_mode, user_program);
             }
         }
 
-        printf("Program \"%s\" does not exist.\n", tokens[1]);
+        if(!find){
+            printf("Program \"%s\" does not exist.\n", tokens[1]);
+        }
     }
 }
 
@@ -387,7 +394,7 @@ static void command_timer(void){
         }
     }
 
-    uint64_t time = timer_get_current_time(SECOND);
+    uint64_t time = timer_get_time(SECOND);
     printf("The number of seconds since booting is %d.\n""\n", time);
     timer_add_timeout_event(SECOND, countdown, 0, shell_timer_event_cb, arg);
 }
@@ -494,7 +501,7 @@ void demo_task(void *arg){
 void shell_timer_event_cb(void *arg){
     printf("\r");
     if(arg == NULL){
-        printf("<Timer>: The number of seconds since booting is %d.\n""\n", timer_get_current_time(SECOND));
+        printf("<Timer>: The number of seconds since booting is %d.\n""\n", timer_get_time(SECOND));
     }else{
         char *msg = (char*)arg;
         printf("%s\n""\n", msg);
