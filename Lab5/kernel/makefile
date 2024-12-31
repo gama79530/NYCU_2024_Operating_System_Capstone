@@ -45,7 +45,7 @@ run: ARGS += -display none
 run: 
 	qemu-system-aarch64 $(ARGS) $(CPIO) $(DTB)
 	
-qemu: ARGS += -display none -S -s
+qemu: ARGS += -S -s -display none
 qemu: 
 	qemu-system-aarch64 $(ARGS) $(CPIO) $(DTB)
 
