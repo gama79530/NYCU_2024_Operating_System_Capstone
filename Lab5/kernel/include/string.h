@@ -18,7 +18,7 @@ char char_to_lower(char c);
 void to_upper(char *s);
 void to_lower(char *s);
 
-void strcpy(const char *src, char *dest);
-void strncpy(const char *src, char *dest, uint64_t len);
+void strcpy(char *dest,const char *src);
+void strncpy(char *dest, const char *src, uint64_t len);
 
 #endif

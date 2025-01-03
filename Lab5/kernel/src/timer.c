@@ -24,8 +24,8 @@ timer_event_t time_sharing_event = {
     {&time_sharing_event.head, &time_sharing_event.head},
     0,
     0,
-    TIME_SHARING_MICROSEC,
-    (timer_event_cb_t)schedule,
+    TIME_SHARING_DEFAULT_PERIOD,
+    (timer_event_cb_t)context_switch,
     NULL
 };
 bool time_sharing_flag = false;

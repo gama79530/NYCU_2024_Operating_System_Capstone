@@ -82,7 +82,7 @@ void* memory_alloc(uint64_t size){
         for(buddy_order = 0; frame_num > (1L << buddy_order); buddy_order++);
         chunk_pool_header_t *buddy_group = (chunk_pool_header_t*)frame_alloc(buddy_order);
         if(buddy_group == NULL) return NULL;
-        list_append(&buddy_group->head, chunk_pools + pool_idx);
+        list_add_last(&buddy_group->head, chunk_pools + pool_idx);
         buddy_group->pool_idx = pool_idx;
         buddy_group->free_num = 0;
         buddy_group->allocated_num = 1;
@@ -107,7 +107,7 @@ void* memory_alloc(uint64_t size){
             pool_node = (chunk_pool_header_t*)frame_alloc(0);
             if(pool_node == NULL)   return NULL;
 
-            list_append(&pool_node->head, chunk_pools + pool_idx);
+            list_add_last(&pool_node->head, chunk_pools + pool_idx);
             pool_node->pool_idx = pool_idx;
             pool_node->free_num = (FRAME_SIZE - sizeof(chunk_pool_header_t)) / (sizeof(bool) + chunk_size);
             pool_node->allocated_num = 0;

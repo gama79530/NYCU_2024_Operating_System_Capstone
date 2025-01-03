@@ -2,8 +2,8 @@
 #include "sched.h"
 #include "thread.h"
 
-.global thread_start
-thread_start:
+.global enter_kernel_task
+enter_kernel_task:
     bl      enable_preemption
     str     x21, [sp, #-8]!
     cbz     x19, to_user_mode   // not a kernel thread

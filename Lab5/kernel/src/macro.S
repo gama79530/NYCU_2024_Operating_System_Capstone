@@ -2,7 +2,7 @@
 
 // save general registers to stack
 .macro save_state, el
-    sub     sp, sp, #S_FRAME_SIZE
+    sub     sp, sp, #STATE_FRAME_SIZE
     stp     x0, x1, [sp, 16 * 0]
     stp     x2, x3, [sp, 16 * 1]
     stp     x4, x5, [sp, 16 * 2]
@@ -21,7 +21,7 @@
 .if \el == 0
     mrs     x22, sp_el0
 .else
-    add     x22, sp, #S_FRAME_SIZE
+    add     x22, sp, #STATE_FRAME_SIZE
 .endif
     stp     x30, x22, [sp, 16 * 15]
     // push information for nested interrupt
@@ -55,6 +55,6 @@
     ldp     x4, x5, [sp, 16 * 2]
     ldp     x2, x3, [sp, 16 * 1]
     ldp     x0, x1, [sp, 16 * 0]
-    add     sp, sp, #S_FRAME_SIZE
+    add     sp, sp, #STATE_FRAME_SIZE
     eret
 .endm

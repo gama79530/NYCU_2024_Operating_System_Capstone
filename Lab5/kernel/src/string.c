@@ -42,7 +42,7 @@ int strncmp(const char *s1, const char *s2, uint64_t len){
 uint64_t hex_str_to_uint(char *s, int hex_str_len){
     uint64_t n = 0;
     hex_str_len = (hex_str_len < 0 || hex_str_len > 16 ? 16 : hex_str_len);
-    strncpy(s, buffer, hex_str_len);
+    strncpy(buffer, s, hex_str_len);
     to_upper(buffer);
     for(int i = 0; i < hex_str_len && buffer[i] != '\0'; i++){
         n <<= 4;
@@ -134,7 +134,7 @@ uint64_t dec_str_to_uint(char *s, int dec_str_len){
     return n;
 }
 
-void strcpy(const char *src, char *dest){
+void strcpy(char *dest, const char *src){
     while(true){
         *dest = *src;
         if(*src == '\0')    break;
@@ -143,7 +143,7 @@ void strcpy(const char *src, char *dest){
     }
 }
 
-void strncpy(const char *src, char *dest, uint64_t len){
+void strncpy(char *dest, const char *src, uint64_t len){
     while(len != 0){
         *dest = *src;
         len--;

@@ -30,17 +30,16 @@
 #define CHUNK_MIN_ORDER             3
 
 /* for time sharing */
-#define TIME_SHARING_MICROSEC       15000
-
-/* for scheduling, reference to sched.h */
-#include "sched.h"
-#define SCHEDULING_ALGORITHM        ALGORITHM_ROUND_ROBIN
+#define TIME_SHARING_DEFAULT_PERIOD 15000
 
 /* for thread management */
-#define KERNEL_THREAD_ORDER         0
-#define USER_THREAD_STACK_ORDER     0
-#define KILL_ZOMBIES_ITER           2
-
+#define PRIORITY_COPY               0
+#define PRIORITY_HIGH               1
+#define PRIORITY_MEDIUM             2
+#define PRIORITY_LOW                4
+#define TASK_STACK_ORDER            0
+#define THREAD_STACK_ORDER          0
+#define KILL_ZOMBIES_ITER           8
 
 /*****************************************************************
  *                      derivative settings                      *                           
@@ -68,7 +67,7 @@
 #endif
 
 /* for thread management */
-#define KERNEL_THREAD_SIZE          (1L << (FRAME_ORDER + KERNEL_THREAD_ORDER))
-#define USER_THREAD_STACK_SIZE      (1L << (FRAME_ORDER + USER_THREAD_STACK_ORDER))
+#define TASK_STACK_SIZE             (1L << (FRAME_ORDER + TASK_STACK_ORDER))
+#define THREAD_STACK_SIZE           (1L << (FRAME_ORDER + THREAD_STACK_ORDER))
 
 #endif

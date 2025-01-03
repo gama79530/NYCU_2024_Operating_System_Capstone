@@ -125,7 +125,7 @@ int buddy_sys_build(void){
         if(buddy_order_array[frame_idx] < 0) continue;
 
         list_head_t *node = (list_head_t*)frame_idx_to_address(frame_idx);
-        list_append(node, buddy_group_lists + buddy_order_array[frame_idx]);
+        list_add_last(node, buddy_group_lists + buddy_order_array[frame_idx]);
     }
 
     buddy_sys_state = 2;
@@ -169,7 +169,7 @@ static bool group_buddy(uint64_t *frame_idx_ptr){
 
         list_remove(frame_node);
         list_remove(buddy_node);
-        list_append(frame_node, buddy_group_lists + buddy_order_array[frame_idx]);
+        list_add_last(frame_node, buddy_group_lists + buddy_order_array[frame_idx]);
 
 #if VERBOSE != 0
         printf("group_buddy: group buddy %s", uint_to_dec_str(frame_idx, NULL));
@@ -273,7 +273,7 @@ void* frame_alloc(uint8_t buddy_order){
             void *buddy_frame_ptr = frame_idx_to_address(buddy_frame_idx);
 
             buddy_order_array[buddy_frame_idx] = buddy_order;
-            list_append((list_head_t*)buddy_frame_ptr, buddy_group_lists + buddy_order);
+            list_add_last((list_head_t*)buddy_frame_ptr, buddy_group_lists + buddy_order);
 
 #if VERBOSE != 0
             printf(
@@ -317,7 +317,7 @@ void frame_free(void *ptr){
     int8_t buddy_order = get_buddy_order(frame_idx);
 
     buddy_order_array[frame_idx] = buddy_order;
-    list_append((list_head_t*)ptr, buddy_group_lists + buddy_order);
+    list_add_last((list_head_t*)ptr, buddy_group_lists + buddy_order);
     while(group_buddy(&frame_idx));
 }
 

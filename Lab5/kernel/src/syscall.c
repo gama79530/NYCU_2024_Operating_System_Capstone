@@ -71,7 +71,7 @@ int sys_exec(const char *name, char *const argv[]){
 }
 
 int sys_fork(void){
-    return thread_create(FLAG_ENTER_USER_MODE | FLAG_FORK, NULL, NULL);
+    return create_task(FLAG_ENTER_USER_MODE | FLAG_FORK, PRIORITY_COPY, NULL, NULL);
 }
 
 void sys_exit(void){
@@ -83,5 +83,8 @@ int sys_mailbox_call(uint8_t channel, uint32_t *mailbox){
 }
 
 void sys_kill(int pid){
+#pragma warning
+#include "printf.h"
+printf("sys_kill works\n");
     kill(pid);
 }

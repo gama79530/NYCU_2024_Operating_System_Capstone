@@ -180,7 +180,7 @@ static void execute_command(void){
         printf("Unsupported command: %s\n""\n", buffer);
     }
     if(routine != NULL){
-        thread_create(flag, routine, NULL);
+        create_task(flag, PRIORITY_MEDIUM, routine, NULL);
         wait();
     }
 }
@@ -323,13 +323,6 @@ static void command_cat(void){
 }
 
 static void command_exec(void){
-    // void *current;
-    // file_info_t info;
-    // void *user_prog;
-    // const uint64_t spsr_el1 = 0x340; // DAF masked + EL0t
-    // const uint64_t load_addr = 0x20000;
-    // const uint64_t stack_ptr = load_addr + 0x2000;
-
     is_help(
         printf("{file name}\t: The file name of the program. You can specify exactly one file at a time.\n");
     );
@@ -359,7 +352,8 @@ static void command_exec(void){
                 user_program = malloc(info.content_size);
                 memcpy(user_program, info.content, info.content_size);
             
-                thread_create(FLAG_ENTER_USER_MODE, (task_routine_t)enter_user_mode, user_program);
+                create_task(FLAG_ENTER_USER_MODE, PRIORITY_LOW, (task_routine_t)enter_user_mode, user_program);
+                wait();
             }
         }
 
@@ -387,7 +381,7 @@ static void command_timer(void){
             countdown = dec_str_to_uint(tokens[i] + 11, -1);
         }else if(!strncmp(tokens[i], "-message=", 9)){
             arg = malloc(str_len(tokens[i] + 9) + 1);
-            strcpy(tokens[i] + 9, (char*)arg);
+            strcpy((char*)arg, tokens[i] + 9);
         }else{
             printf("Unsupport argument: \"%s\"\n""\n", tokens[i]);
             return;
@@ -446,7 +440,7 @@ static void command_memory_layout(void){
 #define DEMO_LOOP_NUM   10
 static void command_thread_demo(void){
     for(int i = 0; i < DEMO_THREAD_NUM; i++){
-        thread_create(0, demo_task, NULL);
+        create_task(FLAG_DUMMY, PRIORITY_LOW, demo_task, NULL);
     }
     wait();
     printf("\n");
@@ -494,7 +488,7 @@ void demo_task(void *arg){
     for(int i = 0; i < DEMO_LOOP_NUM; i++){
         printf("\rThread id: %d, i = %d\n", get_current_pid(), i);
         wait_cycles(1000000);
-        schedule();
+        reschedule();
     }
 }
 
@@ -511,7 +505,7 @@ void shell_timer_event_cb(void *arg){
 }
 
 static void command_syscall_demo(void){
-    thread_create(FLAG_ENTER_USER_MODE, (task_routine_t)syscall_demo, NULL);
+    create_task(FLAG_ENTER_USER_MODE, PRIORITY_LOW, (task_routine_t)syscall_demo, NULL);
     wait();
     printf("\n");
 }

@@ -227,6 +227,6 @@ void execute_waiting_task(void){
         task->callback();
         disable_all_exception();
         
-        list_append(&task->head, &blank_irq_tasks_q);
+        list_add_last(&task->head, &blank_irq_tasks_q);
     }
 }

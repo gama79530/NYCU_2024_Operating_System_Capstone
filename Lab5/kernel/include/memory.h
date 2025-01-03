@@ -8,7 +8,6 @@ int memory_sys_init(void);
 void* memory_alloc(uint64_t size);
 void memory_free(void *ptr);
 
-
 #define malloc  memory_alloc
 #define free    memory_free
 

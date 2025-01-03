@@ -6,11 +6,12 @@ int buddy_sys_init(void);
 int buddy_sys_preserve_memory(void *base, void *boundary, char *msg);
 int buddy_sys_build(void);
 
-/*
-0: before initialize
-1: after initialize and before build
-2: after build
-*/
+/*****************************************************************
+ * buddy_sys_state value:
+ *  0: before initialize
+ *  1: after initialize and before build
+ *  2: after build
+ *****************************************************************/
 uint8_t get_buddy_sys_state(void);
 
 void* frame_idx_to_address(uint64_t frame_idx);

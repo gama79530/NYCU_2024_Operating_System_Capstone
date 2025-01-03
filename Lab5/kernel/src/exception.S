@@ -167,7 +167,7 @@ syscall:
     ldr     x16, [syscall_table, syscall_id, lsl #3]
     blr     x16
     bl      disable_irq
-    str     x0, [sp, #S_X0]
+    str     x0, [sp, #STATE_FRAME_OFFSET_X0]
     load_state 0
 
 invalid_syscall:
