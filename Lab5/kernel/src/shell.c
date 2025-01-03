@@ -13,6 +13,8 @@
 #include "util.h"
 #include "thread.h"
 #include "syscall.h"
+#include "util.h"
+#include "frame.h"
 
 static char buffer[SHELL_BUFFER_MAX_SIZE] = {0};
 static int len;
@@ -349,9 +351,10 @@ static void command_exec(void){
             }else if(!strcmp(tokens[1], info.name)){
                 find = true;
                 // copy file to user program load address
-                user_program = malloc(info.content_size);
+                uint64_t order = 64 - __builtin_clzl(info.content_size) - 12;
+                user_program = frame_alloc(order);
+                printf("%x\n", (uint64_t)user_program);
                 memcpy(user_program, info.content, info.content_size);
-            
                 create_task(FLAG_ENTER_USER_MODE, PRIORITY_LOW, (task_routine_t)enter_user_mode, user_program);
                 wait();
             }
