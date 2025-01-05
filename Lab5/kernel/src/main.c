@@ -72,6 +72,7 @@ void kernel_main(uint64_t x0){
     if(kernel_service_init(x0)){
         return;
     }
+
     create_task(FLAG_KERNEL_SHELL, PRIORITY_HIGH, (task_routine_t)shell, NULL);
     idle();
 }

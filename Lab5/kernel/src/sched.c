@@ -209,11 +209,6 @@ void context_switch(void){
     }
     
     disable_preemption();
-    #pragma warning
-    // bool time_sharing_flag = get_time_sharing_flag();
-    // if(time_sharing_flag){
-    //     disable_time_sharing();
-    // }
     kernel_task_t *next_task = find_next_task();
     if(next_task){
         current_task->counter--;
@@ -239,9 +234,6 @@ void context_switch(void){
         set_current_task(next_task);
         cpu_switch_to(current_task, next_task);
     }
-    // if(time_sharing_flag){
-    //     enable_time_sharing();
-    // }
     enable_preemption();
 }
 

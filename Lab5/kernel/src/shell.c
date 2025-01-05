@@ -351,8 +351,10 @@ static void command_exec(void){
             }else if(!strcmp(tokens[1], info.name)){
                 find = true;
                 // copy file to user program load address
-                uint64_t order = 64 - __builtin_clzl(info.content_size) - 12;
-                user_program = frame_alloc(order);
+                #pragma warning
+                // uint64_t order = 64 - __builtin_clzl(info.content_size) - 12;
+                // user_program = frame_alloc(order);
+                user_program = malloc(info.content_size);
                 printf("%x\n", (uint64_t)user_program);
                 memcpy(user_program, info.content, info.content_size);
                 create_task(FLAG_ENTER_USER_MODE, PRIORITY_LOW, (task_routine_t)enter_user_mode, user_program);

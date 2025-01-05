@@ -51,7 +51,7 @@ int buddy_sys_init(void){
         return -1;
     }
     for(uint64_t i = 0; i < BUDDY_GROUP_ORDER_LIMIT; i++){
-        buddy_group_lists[i].prev = buddy_group_lists[i].next = buddy_group_lists + i;
+        LIST_INIT(buddy_group_lists + i);
     }
 
     buddy_sys_state = 1;
@@ -122,7 +122,9 @@ int buddy_sys_build(void){
     }
 
     for(uint64_t frame_idx = 0; frame_idx < FRAME_NUM; frame_idx++){
-        if(buddy_order_array[frame_idx] < 0) continue;
+        if(buddy_order_array[frame_idx] < 0){
+            continue;
+        }
 
         list_head_t *node = (list_head_t*)frame_idx_to_address(frame_idx);
         list_add_last(node, buddy_group_lists + buddy_order_array[frame_idx]);
@@ -149,11 +151,11 @@ static bool group_buddy(uint64_t *frame_idx_ptr){
     frame_idx = *frame_idx_ptr;
 
     if(frame_idx >= FRAME_NUM || buddy_order_array[frame_idx] < 0 || 
-      buddy_order_array[frame_idx] >= BUDDY_GROUP_ORDER_LIMIT - 1){
+       buddy_order_array[frame_idx] >= BUDDY_GROUP_ORDER_LIMIT - 1){
         return false;
     }
 
-    buddy_idx = frame_idx ^ (1UL << (uint64_t)buddy_order_array[frame_idx]);
+    buddy_idx = frame_idx_to_buddy_idx(frame_idx, buddy_order_array[frame_idx]);
     if(frame_idx > buddy_idx)   swap(frame_idx, buddy_idx);
 
     if(buddy_idx >= FRAME_NUM || buddy_order_array[frame_idx] != buddy_order_array[buddy_idx]){
@@ -192,7 +194,7 @@ void buddy_sys_show_layout(void){
         return;   
     }
 
-    printf("\n********** buddy_sys_show_layout **********\n");
+    printf("\n**********   buddy_sys_show_layout   **********\n");
     printf("memory_base\t: 0x%s\n", uint_to_hex_str(MEMORY_BASE, 8, NULL));
     printf("memory_boundary\t: 0x%s\n", uint_to_hex_str(MEMORY_BOUNDARY, 8, NULL));
     printf("frame_size\t: 2^%d bytes\n", FRAME_ORDER);
@@ -212,7 +214,7 @@ void buddy_sys_show_layout(void){
         }
     }
     
-    printf("\n********** buddy_sys_show_layout **********\n");
+    printf("\n**********   buddy_sys_show_layout   **********\n");
 }
 
 void buddy_sys_show_frame_state(uint64_t frame_idx){
@@ -269,11 +271,9 @@ void* frame_alloc(uint8_t buddy_order){
         ret_frame_ptr = frame_alloc(buddy_order + 1);
         if(ret_frame_ptr != NULL){
             ret_frame_idx = address_to_frame_idx(ret_frame_ptr);
-            uint64_t buddy_frame_idx = ret_frame_idx ^ (1 << buddy_order);
+            uint64_t buddy_frame_idx = split_buddy_group(ret_frame_idx, buddy_order + 1);
             void *buddy_frame_ptr = frame_idx_to_address(buddy_frame_idx);
-
-            buddy_order_array[buddy_frame_idx] = buddy_order;
-            list_add_last((list_head_t*)buddy_frame_ptr, buddy_group_lists + buddy_order);
+            frame_free(buddy_frame_ptr);
 
 #if VERBOSE != 0
             printf(
@@ -331,10 +331,11 @@ static int8_t get_buddy_order(uint64_t frame_idx){
     }else if(buddy_order_array[frame_idx] == BUDDY_STATE_ALLOCATED || 
              buddy_order_array[frame_idx] == BUDDY_STATE_BUDDY_GROUPED){
         uint64_t buddy_idx = frame_idx ^ (1 << buddy_order);
-        while(buddy_order_array[buddy_idx] == BUDDY_STATE_BUDDY_GROUPED){
-            if(frame_idx > buddy_idx)   
+        while(buddy_idx < FRAME_NUM && buddy_order_array[buddy_idx] == BUDDY_STATE_BUDDY_GROUPED){
+            if(frame_idx > buddy_idx){
                 swap(frame_idx, buddy_idx);
-            buddy_idx = frame_idx ^ (1 << ++buddy_order);
+            }
+            buddy_idx = frame_idx_to_buddy_idx(frame_idx, ++buddy_order);
         }
     }else{
         buddy_order = BUDDY_STATE_ERROR;
@@ -345,4 +346,14 @@ static int8_t get_buddy_order(uint64_t frame_idx){
 
 uint8_t get_buddy_sys_state(void){
     return buddy_sys_state;
+}
+
+uint64_t frame_idx_to_buddy_idx(uint64_t frame_idx, int8_t order){
+    return frame_idx ^ (1UL << order);
+}
+
+uint64_t split_buddy_group(uint64_t frame_idx, int8_t order){
+    uint64_t buddy_idx = frame_idx_to_buddy_idx(frame_idx, order - 1);
+    buddy_order_array[buddy_idx] = BUDDY_STATE_ALLOCATED;
+    return buddy_idx;
 }

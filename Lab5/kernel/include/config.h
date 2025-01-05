@@ -4,7 +4,7 @@
 #define VERBOSE                     0
 
 /* for I/O */
-#define USE_ASYNC_IO                0
+#define USE_ASYNC_IO                1
 #define RX_BUFFER_SIZE              (1 << 6)    // buffer size should be power of 2
 #define TX_BUFFER_SIZE              (1 << 6)    // buffer size should be power of 2
 
@@ -49,7 +49,7 @@
 #define FRAME_NUM                   ((MEMORY_BOUNDARY - MEMORY_BASE) >> FRAME_ORDER)
 /* for memory system */
 #define CHUNK_MIN_SIZE              (1L << CHUNK_MIN_ORDER)
-#define POOL_NUM                    (FRAME_ORDER - CHUNK_MIN_ORDER)
+#define POOL_NUM                    (FRAME_ORDER - CHUNK_MIN_ORDER + 1)
 
 /* for I/O */
 #if USE_ASYNC_IO == 0
