@@ -23,11 +23,11 @@ int kernel_service_init(uint64_t x0){
 #if USE_ASYNC_IO != 0
     uart_enable_irqs_1();
 #endif
-    init_printf(0, putc);
+    init_printf(NULL, putc);
     if(dtb_init((void*)x0)){
         return -1;
     }
-    if(ramdisk_init()){
+    if(cpio_init()){
         return -1;
     }
     /* build buddy system */

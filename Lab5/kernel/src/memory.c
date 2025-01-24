@@ -49,6 +49,7 @@ int memory_sys_init(void){
 #if VERBOSE != 0
         printf("memory_sys_init: can not initialize memory system twice.\n");
 #endif
+        return -1;
     }
 
     block_pools = (list_head_t*)startup_alloc(POOL_NUM * sizeof(list_head_t));
@@ -70,6 +71,8 @@ void* memory_alloc(uint64_t size){
 #if VERBOSE != 0
         printf("memory_alloc: memory system is not initialized.\n");
 #endif
+        return NULL;
+    }else if(size == 0){
         return NULL;
     }
 

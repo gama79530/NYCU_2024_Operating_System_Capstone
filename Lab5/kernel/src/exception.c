@@ -10,7 +10,7 @@
 #include "string.h"
 
 typedef struct irq_task{
-    list_head_t             head;
+    list_head_t             anchor;
     irq_task_cb_t           callback;
     uint8_t                 priority;   // smaller number => higher priority
 } irq_task_t;
@@ -19,14 +19,13 @@ static LIST_HEAD(blank_irq_tasks_q);
 static LIST_HEAD(waiting_irq_tasks_q);
 
 void show_invalid_entry_message(uint64_t type, uint64_t spsr_el1, uint64_t esr_el1, uint64_t elr_el1);
-void sync_invalid_el0_64(void);
 void irq_el1h(void);
 void irq_el0_64(void);
 
 void irq_handler(void);
-irq_task_t* get_blank_task(void);
-void add_waiting_task(irq_task_t *task);
-void execute_waiting_task(void);
+irq_task_t* get_blank_irq_task(void);
+void add_waiting_irq_task(irq_task_t *task);
+void execute_waiting_irq_task(void);
 
 const char* entry_error_type[] = {
     [SYNC_INVALID_EL1t]     = "SYNC_INVALID_EL1t",
@@ -144,10 +143,6 @@ void irq_el1h(void){
     irq_handler();
 }
 
-void sync_invalid_el0_64(void){
-    uart_poll_putln("svc test");//temp
-}
-
 void irq_el0_64(void){
     irq_handler();
 }
@@ -159,41 +154,38 @@ void irq_handler(void){
     if(get32(IRQ_PENDING_1) & IRQ_AUX_INT){         // UART IRQ
         if(get32(AUX_MU_IIR) & AUX_IRQ_RX){         // Receiver holds valid byte
             uart_rx_clr();
-            task = get_blank_task();
+            task = get_blank_irq_task();
             task->priority = UART_IRQ_PRIORITY;
             task->callback = uart_irq_task_cb_rx;
         }else if(get32(AUX_MU_IIR) & AUX_IRQ_TX){   // Transmit holding register empty
             uart_tx_clr();
-            task = get_blank_task();
+            task = get_blank_irq_task();
             task->priority = UART_IRQ_PRIORITY;
             task->callback = uart_irq_task_cb_tx;
         }
     }else if(get32(CORE0_IRQ_SOURCE) & CNTPNSIRQ){  // timer IRQ
         disable_core0_timer();
-        task = get_blank_task();
+        task = get_blank_irq_task();
         task->priority = TIMER_IRQ_PRIORITY;
         task->callback = irq_timer_event;
     }else{
         uart_poll_putln("Unknown pending interrupt");
         uart_poll_putln("");
     }
-
-    if(task){
-        add_waiting_task(task);
-        execute_waiting_task();
-    }
+    add_waiting_irq_task(task);
+    execute_waiting_irq_task();
     enable_all_exception();
 }
 
-irq_task_t* get_blank_task(void){
+irq_task_t* get_blank_irq_task(void){
     irq_task_t *task = NULL;
     if(list_is_empty(&blank_irq_tasks_q)){
         task = (irq_task_t*)startup_alloc(sizeof(irq_task_t));
         if(task == NULL)
             task = (irq_task_t*)malloc(sizeof(irq_task_t));
     }else{
-        task = container_of(blank_irq_tasks_q.next, irq_task_t, head);
-        list_remove(&task->head);
+        task = container_of(blank_irq_tasks_q.next, irq_task_t, anchor);
+        list_remove(&task->anchor);
     }
 
     if(task != NULL){
@@ -204,29 +196,29 @@ irq_task_t* get_blank_task(void){
     return task;
 }
 
-void add_waiting_task(irq_task_t *task){
+void add_waiting_irq_task(irq_task_t *task){
     if(task){
         list_head_t *prev = &waiting_irq_tasks_q;
         list_head_t *next = prev->next;
 
-        while(!list_is_head_node(next, &waiting_irq_tasks_q) && container_of(next, irq_task_t, head)->priority <= task->priority){
+        while(!list_is_head_node(next, &waiting_irq_tasks_q) && container_of(next, irq_task_t, anchor)->priority <= task->priority){
             prev = next;
             next = next->next;
         }
 
-        list_add(&task->head, prev, next);
+        list_add(&task->anchor, prev, next);
     }
 }
 
-void execute_waiting_task(void){
+void execute_waiting_irq_task(void){
     irq_task_t *task = NULL;
     while(!list_is_empty(&waiting_irq_tasks_q)){
-        task = container_of(waiting_irq_tasks_q.next, irq_task_t, head);
-        list_remove(&task->head);
+        task = container_of(waiting_irq_tasks_q.next, irq_task_t, anchor);
+        list_remove(&task->anchor);
         enable_all_exception();
         task->callback();
         disable_all_exception();
         
-        list_add_last(&task->head, &blank_irq_tasks_q);
+        list_add_last(&task->anchor, &blank_irq_tasks_q);
     }
 }

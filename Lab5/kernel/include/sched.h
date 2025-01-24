@@ -5,7 +5,7 @@
 
 /* for register set */
 #define STATE_FRAME_SIZE                (17 * 16)   // size of all saved registers 
-#define STATE_FRAME_OFFSET_X0     0           // offset of x0 register in saved state stack frame
+#define STATE_FRAME_OFFSET_X0           0           // offset of x0 register in saved state stack frame
 
 #ifndef __ASSEMBLER__
 #include "types.h"
@@ -33,15 +33,15 @@ typedef struct cpu_context{
     uint64_t        sp;    // stack pointer
 } cpu_context_t;
 
-/*******************************************************************************************************
- * Note:  
- *  1. A thread with a smaller priority number is preferred but not guaranteed.  
- *     Also, a smaller priority number indicates a smaller portion of execution time in each epoch.  
- *  2. The "counter" field is used for managing the portion of execution time in each epoch.  
- *  
- * Restriction:  
- *  1. priority > 0  
- *******************************************************************************************************/
+/*
+Note:  
+    1. A thread with a smaller priority number is preferred but not guaranteed.  
+       Also, a smaller priority number indicates a smaller portion of execution time in each epoch.  
+    2. The "counter" field is used for managing the portion of execution time in each epoch.  
+ 
+Restriction:  
+    1. priority > 0  
+*/
 typedef struct kernel_task{
     cpu_context_t   cpu_context;
     list_head_t     anchor_sched;
@@ -85,11 +85,11 @@ void kill(int pid);
 void notify_task(kernel_task_t *task);
 void kill_task(kernel_task_t *task);
 
-/*******************************************************************************************************
- * Note:
- *  1. reschedule = move current task to next epoch queue + context_switch
- *  2. reschedule is used for active invoking
- *******************************************************************************************************/
+/*
+Note:
+    1. reschedule = move current task to next epoch queue + context_switch
+    2. reschedule is used for active invoking
+*/
 void reschedule(void);
 void context_switch(void);
 

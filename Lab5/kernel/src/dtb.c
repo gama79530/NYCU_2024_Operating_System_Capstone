@@ -17,7 +17,7 @@ int dtb_init(void *dtb_ref){
     fdt_header_t *header = (fdt_header_t*)dtb_ref;
     uint32_t magic_little, off_mem_rsvmap_little, off_dt_struct_little, off_dt_strings_little;
 
-    endian_exchange(&header->magic, &magic_little, 4);
+    endian_exchange(&magic_little, &header->magic, 4);
     if(FDT_HEADER_MAGIC != magic_little){
         dtb_ptr = NULL;
         dtb_mem_rsv_block_ptr = NULL;
@@ -34,14 +34,14 @@ int dtb_init(void *dtb_ref){
     }
     
     dtb_ptr = dtb_ref;
-    endian_exchange(&header->off_mem_rsvmap, &off_mem_rsvmap_little, 4);
+    endian_exchange(&off_mem_rsvmap_little, &header->off_mem_rsvmap, 4);
     dtb_mem_rsv_block_ptr = dtb_ptr + off_mem_rsvmap_little;
-    endian_exchange(&header->off_dt_struct, &off_dt_struct_little, 4);
+    endian_exchange(&off_dt_struct_little, &header->off_dt_struct, 4);
     dtb_struct_block_ptr = dtb_ptr + off_dt_struct_little;
-    endian_exchange(&header->off_dt_strings, &off_dt_strings_little, 4);
+    endian_exchange(&off_dt_strings_little, &header->off_dt_strings, 4);
     dtb_string_block_ptr = dtb_ptr + off_dt_strings_little;
-    endian_exchange(&header->size_dt_struct, &dtb_struct_block_size, 4);
-    endian_exchange(&header->totalsize, &dtb_totalsize, 4);
+    endian_exchange(&dtb_struct_block_size, &header->size_dt_struct, 4);
+    endian_exchange(&dtb_totalsize, &header->totalsize, 4);
 
 #if VERBOSE != 0
     printf("***** set_dtb_ptr success *****\n");
@@ -66,7 +66,7 @@ int fdt_traverse(fdt_callback_t cb){
 
     while(cursor < dtb_struct_block_ptr + dtb_struct_block_size){
         token = *(uint32_t*)cursor;
-        endian_exchange(&token, &token_little, 4);
+        endian_exchange(&token_little, &token, 4);
         switch(token_little){            
             case FDT_BEGIN_NODE:
                 int ret = enter_new_node(&cursor, cb);
@@ -100,7 +100,7 @@ static int enter_new_node(void IN OUT **cursor_ptr, fdt_callback_t cb){
     *cursor_ptr += round_up(str_len(node_name) + 1, 4);
     while(*cursor_ptr < dtb_struct_block_ptr + dtb_struct_block_size){
         token = *(uint32_t*)*cursor_ptr;
-        endian_exchange(&token, &token_little, 4);
+        endian_exchange(&token_little, &token, 4);
         switch(token_little){
             case FDT_BEGIN_NODE:
                 int ret = enter_new_node(cursor_ptr, cb);
@@ -113,13 +113,13 @@ static int enter_new_node(void IN OUT **cursor_ptr, fdt_callback_t cb){
                 *cursor_ptr += 4;
 
                 property = (fdt_property_t*)*cursor_ptr;
-                endian_exchange(&property->nameoff, &nameoff_little, 4);
+                endian_exchange(&nameoff_little, &property->nameoff, 4);
                 property_name = (const char*)(dtb_string_block_ptr + nameoff_little);
             
                 *cursor_ptr += 8;
                 cb(token, property_name, *cursor_ptr, property->len);
 
-                endian_exchange(&property->len, &len_little, 4);
+                endian_exchange(&len_little, &property->len, 4);
                 *cursor_ptr += round_up(len_little, 4);
                 break;
             case FDT_NOP:

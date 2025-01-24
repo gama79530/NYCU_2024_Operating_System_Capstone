@@ -16,11 +16,17 @@
 #include "util.h"
 #include "frame.h"
 
+#define ERR_MSG_TOO_LONG        1
+#define ERR_MSG_TOO_MANY_TOKEN  2
+#define ERR_MSG_TOO_LONG_TOKEN  3
+#define ERR_MSG_EMPTY_COMMAND   4
+
 static char buffer[SHELL_BUFFER_MAX_SIZE] = {0};
 static int len;
 static char tokens[SHELL_TOKEN_MAX_NUM][SHELL_TOKEN_MAX_LEN] = {0};
 static int token_num = 0;
 static const char *err_msg[] = {
+    "",
     "Reading error: command is too long.",
     "Parsing error: too many tokens.",
     "Parsing error: token length is too long.",
@@ -65,22 +71,28 @@ void shell_timer_event_cb(void *arg);
 void demo_task(void *arg);
 
 // for command_syscall_demo
-void user_program(void);
 void syscall_demo(void);
+void syscall_demo_user_program(void);
 
 void shell(void){
     int err_code = 0;
     printf("Welcome to the OGC shell. Use \"help\" for information on supported commands.\n");
+    #pragma warning
+    token_num = 2;
+    strcpy(tokens[1], "syscall.img");
+    command_exec();
+    /*debug*/
+
     while(true){
         new_line();
         err_code = read_command();
         if(err_code){
-            printf("\n%s\n", err_msg[err_code - 1]);
+            printf("\n%s\n", err_msg[err_code]);
             continue;
         }
         err_code = parse_command();
         if(err_code){
-            printf("\n%s\n", err_msg[err_code - 1]);
+            printf("\n%s\n", err_msg[err_code]);
             continue;
         }
 
@@ -95,95 +107,88 @@ void new_line(void){
 }
 
 static int read_command(void){
-    len = 0;
-    char c = '\0';
+    char c;
     do{
         c = uart_getc();
-        
         if(c == '\n'){
             buffer[len++] = '\0';
             printf("\n");
         }else if(c == 0x7F){    // c = del
             if(len){
                 printf("%c %c", (char)0x8, (char)0x8);  // print 2 backspaces to remove del and one char
-                buffer[len--] = '\0';
+                len--;
             }
         }else if(c > 0x1F){
             buffer[len++] = c;
             printf("%c", c);
         }
     }while(c != '\n' && len < SHELL_BUFFER_MAX_SIZE);
+
     if(len == SHELL_BUFFER_MAX_SIZE && buffer[SHELL_BUFFER_MAX_SIZE - 1] != '\0'){
-        return 1;
+        return ERR_MSG_TOO_LONG;
     }
 
     return 0;
 }
 
 static int parse_command(void){
-    char *c = buffer;
-    char *t;
-
-    while(*c != '\0'){
+    char *src = buffer;
+    char *dest, *limit;
+    while(*src != '\0'){
         if(token_num == SHELL_TOKEN_MAX_NUM){
-            return 2;
+            return ERR_MSG_TOO_MANY_TOKEN;
         }
 
-        while(*c == ' '){
-            c++;
+        while(*src == ' '){
+            src++;
         }
         
-        t = tokens[token_num];
-        while(*c != ' ' && *c != '\0'){
-            if(t == tokens[token_num] + SHELL_TOKEN_MAX_LEN - 1){
-                return 3;
+        dest = tokens[token_num];
+        limit = dest + SHELL_TOKEN_MAX_LEN - 1;
+        while(*src != ' ' && *src != '\0'){
+            if(dest == limit){
+                return ERR_MSG_TOO_LONG_TOKEN;
             }
-            *(t++) = *(c++);
+            *(dest++) = *(src++);
         }
-        *t = '\0';
+        *dest = '\0';
 
-        if(t != tokens[token_num]){
+        if(dest != tokens[token_num]){
             token_num++;
         }
     }
-    return token_num ? 0 : 4;
+    return token_num ? 0 : ERR_MSG_EMPTY_COMMAND;
 }
 
 static void execute_command(void){
-    task_routine_t routine = NULL;
-    uint64_t flag = 0;
     if(!strncmp(tokens[0], "help", SHELL_TOKEN_MAX_LEN)){
-        routine = (task_routine_t)command_help;
+        command_help();
     }else if(!strncmp(tokens[0], "hello", SHELL_TOKEN_MAX_LEN)){
-        routine = (task_routine_t)command_hello;
+        command_hello();
     }else if(!strncmp(tokens[0], "mailbox", SHELL_TOKEN_MAX_LEN)){
-        routine = (task_routine_t)command_mailbox;
+        command_mailbox();
     }else if(!strncmp(tokens[0], "reboot", SHELL_TOKEN_MAX_LEN)){
-        routine = (task_routine_t)command_reboot;
+        command_reboot();
     }else if(!strncmp(tokens[0], "ls", SHELL_TOKEN_MAX_LEN)){
-        routine = (task_routine_t)command_ls;
+        command_ls();
     }else if(!strncmp(tokens[0], "cat", SHELL_TOKEN_MAX_LEN)){
-        routine = (task_routine_t)command_cat;
+        command_cat();
     }else if(!strncmp(tokens[0], "exec", SHELL_TOKEN_MAX_LEN)){
-        routine = (task_routine_t)command_exec;
+        command_exec();
     }else if(!strncmp(tokens[0], "timer", SHELL_TOKEN_MAX_LEN)){
-        routine = (task_routine_t)command_timer;
+        command_timer();
     }else if(!strncmp(tokens[0], "malloc", SHELL_TOKEN_MAX_LEN)){
-        routine = (task_routine_t)command_malloc;
+        command_malloc();
     }else if(!strncmp(tokens[0], "free", SHELL_TOKEN_MAX_LEN)){
-        routine = (task_routine_t)command_free;
+        command_free();
     }else if(!strncmp(tokens[0], "memory_layout", SHELL_TOKEN_MAX_LEN)){
-        routine = (task_routine_t)command_memory_layout;
+        command_memory_layout();
     }else if(!strncmp(tokens[0], "thread_demo", SHELL_TOKEN_MAX_LEN)){
-        routine = (task_routine_t)command_thread_demo;
+        command_thread_demo();
     }else if(!strncmp(tokens[0], "syscall_demo", SHELL_TOKEN_MAX_LEN)){
-        routine = (task_routine_t)command_syscall_demo;
+        command_syscall_demo();
     }else{
         printf("Unsupported command: %s\n""\n", buffer);
-    }
-    if(routine != NULL){
-        create_task(flag, PRIORITY_MEDIUM, routine, NULL);
-        wait();
     }
 }
 
@@ -213,7 +218,10 @@ static void command_help(void){
 }
 
 static void command_hello(void){
-    printf("Hello world!\n""\n");
+    printf(
+        "Hello world!\n"
+        "\n"
+    );
 }
 
 static void command_mailbox(void){
@@ -336,7 +344,7 @@ static void command_exec(void){
     }else{
         void *cursor = get_cpio_base();
         file_info_t info;
-        int iter_ret = 0;
+        int iter_ret = CPIO_SUCCESS;
         void *user_program = NULL;
         bool find = false;
 
@@ -351,11 +359,7 @@ static void command_exec(void){
             }else if(!strcmp(tokens[1], info.name)){
                 find = true;
                 // copy file to user program load address
-                #pragma warning
-                // uint64_t order = 64 - __builtin_clzl(info.content_size) - 12;
-                // user_program = frame_alloc(order);
                 user_program = malloc(info.content_size);
-                printf("%x\n", (uint64_t)user_program);
                 memcpy(user_program, info.content, info.content_size);
                 create_task(FLAG_ENTER_USER_MODE, PRIORITY_LOW, (task_routine_t)enter_user_mode, user_program);
                 wait();
@@ -517,14 +521,14 @@ static void command_syscall_demo(void){
 
 void syscall_demo(void){
     printf("Kernel thread start! Current EL is %d\n", get_current_el());
-    int err = enter_user_mode((uint64_t)user_program);
+    int err = enter_user_mode((uint64_t)syscall_demo_user_program);
     if(err < 0){
         printf("Error while enter user mode!\n");
         return;
     }
 }
 
-void user_program(void){
+void syscall_demo_user_program(void){
     printf("User thread start!\n");
     printf("Fork Test, pid: %d\n", syscall_getpid());
     int cnt = 1;

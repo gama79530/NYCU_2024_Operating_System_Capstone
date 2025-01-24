@@ -74,10 +74,7 @@ int timer_init(void){
 }
 
 void enable_core0_timer(void){
-/********************************************************************
- * enable timer
- * Page 2179 of AArch64-Reference-Manual
- ********************************************************************/
+    // ref: Page 2179 of AArch64-Reference-Manual
     asm volatile(
         "mov    x0, 1\n"
         "msr    cntp_ctl_el0, x0\n"
@@ -97,10 +94,7 @@ void enable_core0_timer(void){
 }
 
 void disable_core0_timer(void){
-/********************************************************************
- * disable timer
- * Page 2179 of AArch64-Reference-Manual
- ********************************************************************/
+    // ref: Page 2179 of AArch64-Reference-Manual
     asm volatile(
         "mov    x0, 0\n"
         "msr    cntp_ctl_el0, x0\n"
@@ -168,13 +162,11 @@ void add_waiting_event(timer_event_t *event){
     if(event == NULL)   return;
     list_head_t *cursor;
 
-    disable_irq();
     for(cursor = waiting_event_q.prev;
         !list_is_head_node(cursor, &waiting_event_q) &&
         container_of(cursor, timer_event_t, head)->expired_count > event->expired_count;
         cursor = cursor->prev);
     list_add(&event->head, cursor, cursor->next);
-    enable_irq();
 
     if(event == container_of(waiting_event_q.next, timer_event_t, head)){
         int count = get_physical_count();
@@ -216,7 +208,7 @@ void irq_timer_event(void){
 void enable_time_sharing(void){
     if(!time_sharing_flag){
         time_sharing_event.registration_count = get_physical_count();
-        time_sharing_event.expired_count = time_sharing_event.registration_count + time_sharing_event.expired_count;
+        time_sharing_event.expired_count = time_sharing_event.registration_count + time_sharing_event.period_count;
         add_waiting_event(&time_sharing_event);
         time_sharing_flag = true;
     }

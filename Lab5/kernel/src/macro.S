@@ -33,9 +33,9 @@
 // load general registers from stack
 .macro load_state, el
     // pop information for nested interrupt
-    ldp     x22, x23, [sp, 16 * 16]
-    msr     spsr_el1, x22
-    msr     elr_el1, x23   
+    ldp     x23, x24, [sp, 16 * 16]
+    msr     spsr_el1, x23
+    msr     elr_el1, x24   
     ldp     x30, x22, [sp, 16 * 15]
 .if \el == 0
     msr     sp_el0, x22

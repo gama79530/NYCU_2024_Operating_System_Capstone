@@ -24,11 +24,11 @@ void wait_cycles(uint64_t n);   // Wait N CPU cycles (ARM CPU only)
 uint64_t round_up(uint64_t target, uint64_t unit);
 uint64_t truncate(uint64_t target, uint64_t unit);
 
-#define endian_exchange(src_ptr, dst_ptr, type_len) do{\
+#define endian_exchange(dest_ptr, src_ptr, type_len) do{\
+    uint8_t *dest = (uint8_t*)(dest_ptr);\
     uint8_t *src = (uint8_t*)(src_ptr);\
-    uint8_t *dst = (uint8_t*)(dst_ptr);\
     for(int i = 0; i < type_len; i++){\
-        dst[i] = src[type_len - 1 - i];\
+        dest[i] = src[type_len - 1 - i];\
     }\
 }while(0)
 

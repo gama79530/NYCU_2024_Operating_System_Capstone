@@ -16,7 +16,7 @@ uint8_t get_buddy_sys_state(void);
 
 void* frame_idx_to_address(uint64_t frame_idx);
 uint64_t address_to_frame_idx(void *ptr);
-uint64_t frame_idx_to_buddy_idx(uint64_t frame_idx, int8_t order);
+uint64_t find_buddy_idx(uint64_t frame_idx, int8_t order);
 uint64_t split_buddy_group(uint64_t frame_idx, int8_t order);
 
 void buddy_sys_show_layout(void);

@@ -8,7 +8,7 @@
     we use an indirect call to handle exceptions.
 */
 .macro ventry label
-    .align 7    // entry size is 0x80, .align will pad 0
+    .align 7    // entry size is 0x80, ".align" will pad 0
     b \label
 .endm
 
@@ -22,10 +22,9 @@
     b       err_hang
 .endm
 
-/************************************************************************
- * Instructions for accessing the PSTATE fields, page 236 of
- * AArch64-Reference-Manual
- ************************************************************************/
+/******************************************************************************************
+ * Instructions for accessing the PSTATE fields, page 236 of AArch64-Reference-Manual
+ ******************************************************************************************/
 .globl enable_fiq
 enable_fiq:
     msr     daifclr, #1
@@ -163,6 +162,7 @@ el0_svc:
     bl      enable_irq
     cmp     syscall_id, syscall_num
     b.hs    invalid_syscall
+
 syscall:
     ldr     x16, [syscall_table, syscall_id, lsl #3]
     blr     x16

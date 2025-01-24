@@ -11,8 +11,8 @@
 
 .global _start
 _start:
-    // x0 is already used by dtb, so we have to save it so that we can pass it to kernel
-    mov     x19, x0
+    // x0 is already used by dtb, so we have to preserve it and then pass it to kernel_main
+    mov     x9, x0
 
     // read cpu id and stop slave cores
     bl      get_cpu_id
@@ -22,7 +22,9 @@ _start:
     "J.3 Functional Index of AArch64 Registers and System Instructions" of the 
     "ARM Architecture Reference Manual ARMv8, for ARMv8-A Architecture Profile."
     
-    Rpi3’s CPU runs at EL2 after being booted by default, so the following "_el3" setting can be omitted.
+    Rpi3’s CPU runs at EL2 after being booted by default, so the function "from_el3_to_el1" 
+    and related invoking code can be omitted.
+    
     Read the explanation from the repository
     https://github.com/s-matyukevich/raspberry-pi-os/blob/master/docs/lesson02/rpi-os.md#sctlr_el1-system-control-register-el1-page-2654-of-aarch64-reference-manual
 */
@@ -50,7 +52,7 @@ _kernel_init:
     msr     vbar_el1, x0
     
     // invoke main function
-    mov     x0, x19
+    mov     x0, x9
     bl      kernel_main
 
 _hang:

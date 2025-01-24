@@ -23,17 +23,17 @@
  * AArch64-Reference-Manual
  *******************************************************************************/
 
-#define HCR_RW    (1 << 31)
-#define HCR_VALUE (HCR_RW)
+#define HCR_RW      (1 << 31)
+#define HCR_VALUE   (HCR_RW)
 
 /*******************************************************************************
  * SCR_EL3, Secure Configuration Register (EL3), Page 1923 of
  * AArch64-Reference-Manual
  *******************************************************************************/
 
-#define SCR_RW       (1 << 10)
-#define SCR_NS       (1 << 0)
-#define SCR_VALUE    (SCR_RW | SCR_NS)
+#define SCR_RW      (1 << 10)
+#define SCR_NS      (1 << 0)
+#define SCR_VALUE   (SCR_RW | SCR_NS)
 
 
 /*******************************************************************************

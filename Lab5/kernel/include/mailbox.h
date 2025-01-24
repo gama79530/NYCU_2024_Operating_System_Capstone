@@ -2,9 +2,11 @@
 #define __MAILBOX_H__
 #include "types.h"
 
-/***
-    Buffer contents:
+/*
+Mailbox property interface
+ref: https://github.com/raspberrypi/firmware/wiki/Mailbox-property-interface
 
+Buffer contents:
     u32: size in bytes, (x+1) * 4, including the end tag
     u32: Request code / response code
     u8 ...: sequence of concatenated tags
@@ -12,16 +14,15 @@
     u8 ...: padding
 
 
-    Tag format:
-
+Tag format:
     u32: tag identifier
     u32: value buffer size in bytes
     u32: request code / response code
-        b31 = 0: request, b30-b0: reserved
-        b31 = 1: response, b30-b0: value length in bytes
+    b31 = 0: request, b30-b0: reserved
+    b31 = 1: response, b30-b0: value length in bytes
     u8 ...: value buffer
     u8 ...: padding to align to 32 bits
-***/
+*/
 #define MBOX_EMPTY                  0x40000000
 #define MBOX_FULL                   0x80000000
 

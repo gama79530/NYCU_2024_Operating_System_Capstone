@@ -12,17 +12,17 @@ typedef struct list_head{
 #define LIST_INIT(node)     ((node)->prev = (node)->next = (node))
 
 #define list_for_each(node, head) \
-    for (node = (head)->next; node != (head); node = node->next)
+    for(node = (head)->next; node != (head); node = node->next)
 
 #define list_reverse_for_each(node, head) \
-    for (node = (head)->prev; node != (head); node = node->prev)
+    for(node = (head)->prev; node != (head); node = node->prev)
 
 #define list_for_each_safe(node, safe, head) \
-    for (node = (head)->next, safe = node->next; node != (head); \
+    for(node = (head)->next, safe = node->next; node != (head); \
          node = safe, safe = node->next)
 
 #define list_reverse_for_each_safe(node, safe, head) \
-    for (node = (head)->prev, safe = node->prev; node != (head); \
+    for(node = (head)->prev, safe = node->prev; node != (head); \
          node = safe, safe = node->prev)
 
 static inline void list_add(list_head_t *node, list_head_t *prev, list_head_t *next){

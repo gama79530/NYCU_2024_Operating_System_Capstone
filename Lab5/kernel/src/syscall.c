@@ -71,7 +71,7 @@ int sys_exec(const char *name, char *const argv[]){
 }
 
 int sys_fork(void){
-    return create_task(FLAG_ENTER_USER_MODE | FLAG_FORK, PRIORITY_COPY, NULL, NULL);
+    return create_task(FLAG_FORK, PRIORITY_COPY, NULL, NULL);
 }
 
 void sys_exit(void){

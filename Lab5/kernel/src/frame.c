@@ -155,7 +155,7 @@ static bool group_buddy(uint64_t *frame_idx_ptr){
         return false;
     }
 
-    buddy_idx = frame_idx_to_buddy_idx(frame_idx, buddy_order_array[frame_idx]);
+    buddy_idx = find_buddy_idx(frame_idx, buddy_order_array[frame_idx]);
     if(frame_idx > buddy_idx)   swap(frame_idx, buddy_idx);
 
     if(buddy_idx >= FRAME_NUM || buddy_order_array[frame_idx] != buddy_order_array[buddy_idx]){
@@ -208,7 +208,8 @@ void buddy_sys_show_layout(void){
             frame_idx += (1 << get_buddy_order(frame_idx));
         }else if(buddy_order_array[frame_idx] == BUDDY_STATE_PRESERVED){
             while(++frame_idx < FRAME_NUM && buddy_order_array[frame_idx] == BUDDY_STATE_PRESERVED);
-            buddy_sys_show_frame_state(frame_idx - 1);
+            if(frame_idx != 1)
+                buddy_sys_show_frame_state(frame_idx - 1);
         }else{
             frame_idx++;
         }
@@ -268,19 +269,18 @@ void* frame_alloc(uint8_t buddy_order){
 #endif
     // try to split buddy group with greater order
     }else{
-        ret_frame_ptr = frame_alloc(buddy_order + 1);
-        if(ret_frame_ptr != NULL){
-            ret_frame_idx = address_to_frame_idx(ret_frame_ptr);
-            uint64_t buddy_frame_idx = split_buddy_group(ret_frame_idx, buddy_order + 1);
-            void *buddy_frame_ptr = frame_idx_to_address(buddy_frame_idx);
-            frame_free(buddy_frame_ptr);
-
 #if VERBOSE != 0
             printf(
                 "frame_alloc: find contiguous buddy group by split buddy group with order %d.\n", 
                 buddy_order + 1
             );
 #endif
+        ret_frame_ptr = frame_alloc(buddy_order + 1);
+        if(ret_frame_ptr != NULL){
+            ret_frame_idx = address_to_frame_idx(ret_frame_ptr);
+            uint64_t buddy_frame_idx = split_buddy_group(ret_frame_idx, buddy_order + 1);
+            void *buddy_frame_ptr = frame_idx_to_address(buddy_frame_idx);
+            frame_free(buddy_frame_ptr);
         }
     }
 
@@ -323,7 +323,6 @@ void frame_free(void *ptr){
 
 static int8_t get_buddy_order(uint64_t frame_idx){
     int8_t buddy_order = 0; 
-    /* need check */
     if(frame_idx >= FRAME_NUM || buddy_sys_state < 1){
         buddy_order = BUDDY_STATE_ERROR;
     }else if(buddy_order_array[frame_idx] == BUDDY_STATE_PRESERVED || buddy_order_array[frame_idx] >= 0){
@@ -335,7 +334,7 @@ static int8_t get_buddy_order(uint64_t frame_idx){
             if(frame_idx > buddy_idx){
                 swap(frame_idx, buddy_idx);
             }
-            buddy_idx = frame_idx_to_buddy_idx(frame_idx, ++buddy_order);
+            buddy_idx = find_buddy_idx(frame_idx, ++buddy_order);
         }
     }else{
         buddy_order = BUDDY_STATE_ERROR;
@@ -348,12 +347,12 @@ uint8_t get_buddy_sys_state(void){
     return buddy_sys_state;
 }
 
-uint64_t frame_idx_to_buddy_idx(uint64_t frame_idx, int8_t order){
+uint64_t find_buddy_idx(uint64_t frame_idx, int8_t order){
     return frame_idx ^ (1UL << order);
 }
 
 uint64_t split_buddy_group(uint64_t frame_idx, int8_t order){
-    uint64_t buddy_idx = frame_idx_to_buddy_idx(frame_idx, order - 1);
+    uint64_t buddy_idx = find_buddy_idx(frame_idx, order - 1);
     buddy_order_array[buddy_idx] = BUDDY_STATE_ALLOCATED;
     return buddy_idx;
 }

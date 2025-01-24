@@ -4,7 +4,7 @@
 #define VERBOSE                     0
 
 /* for I/O */
-#define USE_ASYNC_IO                1
+#define USE_ASYNC_IO                0
 #define RX_BUFFER_SIZE              (1 << 6)    // buffer size should be power of 2
 #define TX_BUFFER_SIZE              (1 << 6)    // buffer size should be power of 2
 
@@ -12,9 +12,6 @@
 #define SHELL_BUFFER_MAX_SIZE       256
 #define SHELL_TOKEN_MAX_NUM         8
 #define SHELL_TOKEN_MAX_LEN         32
-
-/* for ramdisk */
-#define ramdisk_init                cpio_init
 
 /* for Interrupt Request priority  */
 #define TIMER_IRQ_PRIORITY          1
@@ -37,8 +34,9 @@
 #define PRIORITY_HIGH               1
 #define PRIORITY_MEDIUM             2
 #define PRIORITY_LOW                4
-#define TASK_STACK_ORDER            0
-#define THREAD_STACK_ORDER          0
+
+#define TASK_STACK_FRAMES           1
+#define THREAD_STACK_FRAMES         1
 #define KILL_ZOMBIES_ITER           8
 
 /*****************************************************************
@@ -47,6 +45,7 @@
 /* for buddy system */
 #define FRAME_SIZE                  (1L << FRAME_ORDER)
 #define FRAME_NUM                   ((MEMORY_BOUNDARY - MEMORY_BASE) >> FRAME_ORDER)
+
 /* for memory system */
 #define CHUNK_MIN_SIZE              (1L << CHUNK_MIN_ORDER)
 #define POOL_NUM                    (FRAME_ORDER - CHUNK_MIN_ORDER + 1)
@@ -67,7 +66,7 @@
 #endif
 
 /* for thread management */
-#define TASK_STACK_SIZE             (1L << (FRAME_ORDER + TASK_STACK_ORDER))
-#define THREAD_STACK_SIZE           (1L << (FRAME_ORDER + THREAD_STACK_ORDER))
+#define TASK_STACK_SIZE             (TASK_STACK_FRAMES * FRAME_SIZE)
+#define THREAD_STACK_SIZE           (THREAD_STACK_FRAMES * FRAME_SIZE)
 
 #endif

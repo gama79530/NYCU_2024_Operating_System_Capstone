@@ -4,7 +4,7 @@
 #include "util.h"
 #include "thread.h"
 #include "exception.h"
-#include "frame.h"
+#include "memory.h"
 #include "timer.h"
 
 static int pid_seq = 1;
@@ -34,6 +34,8 @@ static kernel_task_t* find_running_task(int pid);
 static kernel_task_t* find_waiting_task(int pid);
 static kernel_task_t* find_next_task(void);
 static void kill_zombies(void);
+
+void view_all_task(void);
 
 int scheduling_init(void){
     running_task_queue = &running_task_q_1;
@@ -141,9 +143,9 @@ static void kill_zombies(void){
     {   task = container_of(terminated_task_queue->next, kernel_task_t, anchor_sched);
         list_remove(&task->anchor_sched);
         if(task->user_stack){
-            frame_free((void*)task->user_stack);
+            free((void*)task->user_stack);
         }
-        frame_free(task);
+        free(task);
     }
 }
 
@@ -273,5 +275,36 @@ void kill_task(kernel_task_t *task){
         list_add_last(&task->anchor_sched, terminated_task_queue);
         enable_preemption();
         reschedule();
+    }
+}
+
+void view_all_task(void){
+    char *names[] = {
+        "running_task_queue",
+        "next_epoch_queue",
+        "waiting_task_queue",
+        "terminated_task_queue",
+    };
+    list_head_t *queues[] = {
+        running_task_queue,
+        next_epoch_queue,
+        waiting_task_queue,
+        terminated_task_queue,
+    };
+    printf("\n**********   view_all_task   **********\n");
+    printf("current task: %d\n", get_current_pid());
+    for(int i = 0; i < 4; i++){
+        list_head_t *queue = queues[i];
+        if(list_is_empty(queue)){
+            printf("%s is empty\n", names[i]);
+        }else{
+            printf("%s: ", names[i]);
+            list_head_t *node;
+            list_for_each(node, queue){
+                kernel_task_t *task = container_of(node, kernel_task_t, anchor_sched);
+                printf("pid %d,", task->pid);
+            }
+            printf("\n");
+        }
     }
 }

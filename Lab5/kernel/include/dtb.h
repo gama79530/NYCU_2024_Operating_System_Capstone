@@ -2,7 +2,8 @@
 #define __DTB_H__
 #include "types.h"
 
-/*  Devicetree .dtb Structure:
+/*
+Devicetree .dtb Structure:
 +-----------------------------------------------------------+
 |   alignment - 8 bytes,        fdt_header_t                |
 +-----------------------------------------------------------+
@@ -38,38 +39,39 @@ typedef struct fdt_header{
 
 # define FDT_HEADER_MAGIC   0xD00DFEED
 
-/* memory reservation block: 
-    1. consists of a list of pairs of 64-bit big-endian integers
-    2. terminated with an entry where both address and size are equal to 0.
-    3. physical address and size in bytes of a reserved memory region
+/*  
+memory reservation block: 
+1. consists of a list of pairs of 64-bit big-endian integers
+2. terminated with an entry where both address and size are equal to 0.
+3. physical address and size in bytes of a reserved memory region
 */
 typedef struct fdt_reserve_entry{
     uint64_t address;           
     uint64_t size;
 } fdt_reserve_entry_t;
 
-/* structure block:
-
+/*
+structure block:
 1. All tokens shall be aligned on 4 bytes after the token’s data. 
 2. FDT_END token marks the end of the structure block.
 
-    tree node:
+tree node:
 
-    +-------------------------------------------+
-    |   (optional) FDT_NOP, any number          |
-    +-------------------------------------------+
-    |   FDT_BEGIN_NODE                          |
-    +-------------------------------------------+
-    |   node name, null-terminated name string  |
-    +-------------------------------------------+
-    |   properties of the node                  |
-    +-------------------------------------------+
-    |   child nodes                             |
-    +-------------------------------------------+
-    |   (optional) FDT_NOP, any number          |
-    +-------------------------------------------+
-    |   FDT_END_NODE                            |
-    +-------------------------------------------+
++-------------------------------------------+
+|   (optional) FDT_NOP, any number          |
++-------------------------------------------+
+|   FDT_BEGIN_NODE                          |
++-------------------------------------------+
+|   node name, null-terminated name string  |
++-------------------------------------------+
+|   properties of the node                  |
++-------------------------------------------+
+|   child nodes                             |
++-------------------------------------------+
+|   (optional) FDT_NOP, any number          |
++-------------------------------------------+
+|   FDT_END_NODE                            |
++-------------------------------------------+
 */
 
 #define FDT_BEGIN_NODE  0x00000001
@@ -78,18 +80,18 @@ typedef struct fdt_reserve_entry{
 #define FDT_NOP         0x00000004
 #define FDT_END         0x00000009
 
-/*  property of node:
+/*
+property of node:
 
-    +-------------------------------------------+
-    |   (optional) FDT_NOP, any number          |
-    +-------------------------------------------+
-    |   FDT_PROP                                |
-    +-------------------------------------------+
-    |   fdt_property_t                          |
-    +-------------------------------------------+
-    |   property’s value                        |
-    +-------------------------------------------+
-
++-------------------------------------------+
+|   (optional) FDT_NOP, any number          |
++-------------------------------------------+
+|   FDT_PROP                                |
++-------------------------------------------+
+|   fdt_property_t                          |
++-------------------------------------------+
+|   property’s value                        |
++-------------------------------------------+
 */
 
 // both two fields are big-endian uint32_t 
