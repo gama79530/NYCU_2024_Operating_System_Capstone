@@ -1,0 +1,12 @@
+*.o
+build
+*.img
+*.elf
+*.cpio
+*_bk*
+temp
+tmp
+
+venv
+.vscode
+
