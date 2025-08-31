@@ -4,8 +4,8 @@ build
 *.elf
 *.cpio
 *_bk*
-temp
-tmp
+*temp*
+*tmp*
 
 venv
 .vscode
