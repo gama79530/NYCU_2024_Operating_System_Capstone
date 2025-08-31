@@ -39,7 +39,7 @@ char *strncpy(char *s1, const char *s2, size_t n)
     return s1;
 }
 
-int strcmp(const char *s1, const char *s2)
+int32_t strcmp(const char *s1, const char *s2)
 {
     while (*s1 != '\0' && *s1 == *s2) {
         s1++;
@@ -48,7 +48,7 @@ int strcmp(const char *s1, const char *s2)
     return (*s1 > *s2) - (*s1 < *s2);
 }
 
-int strncmp(const char *s1, const char *s2, size_t n)
+int32_t strncmp(const char *s1, const char *s2, size_t n)
 {
     while (n && *s1 != '\0' && *s1 == *s2) {
         n--;
@@ -59,7 +59,7 @@ int strncmp(const char *s1, const char *s2, size_t n)
     return (n ? (*s1 > *s2) - (*s1 < *s2) : 0);
 }
 
-char *uint64_to_hex_str(uint64_t value, int width, char *buf)
+char *uint64_to_hex_str(uint64_t value, uint32_t width, char *buf)
 {
     char *dst = (buf == NULL ? digit_buffer : buf);
     if (width > 16) {
@@ -86,7 +86,7 @@ char *uint64_to_hex_str(uint64_t value, int width, char *buf)
     return dst;
 }
 
-char *uint64_to_dec_str(uint64_t value, int width, char *buf)
+char *uint64_to_dec_str(uint64_t value, uint32_t width, char *buf)
 {
     char *dst = (buf == NULL ? digit_buffer : buf);
     if (width > 20) {

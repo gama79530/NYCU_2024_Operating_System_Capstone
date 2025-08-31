@@ -14,7 +14,7 @@ volatile uint32_t *get_default_buffer(void)
     return default_buffer;
 }
 
-int mailbox_exchange(uint8_t channel, volatile uint32_t *buffer)
+int32_t mailbox_exchange(uint8_t channel, volatile uint32_t *buffer)
 {
     if (buffer == NULL) {
         buffer = default_buffer;
@@ -37,7 +37,7 @@ int mailbox_exchange(uint8_t channel, volatile uint32_t *buffer)
     return MAILBOX_ERR_TIMEOUT;
 }
 
-const char *err_code_to_str(int err_code)
+const char *err_code_to_str(int32_t err_code)
 {
     if (err_code >= 0) {
         return NULL;

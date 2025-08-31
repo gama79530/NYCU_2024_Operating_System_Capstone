@@ -28,8 +28,8 @@ static const char *err_msg[] = {
 #define ERR_CODE_TOO_MANY_TOKENS -4
 
 static void new_line(void);
-static int read_command(void);
-static int parse_command(void);
+static int32_t read_command(void);
+static int32_t parse_command(void);
 static void execute_command(void);
 static inline bool is_help(void);
 
@@ -62,7 +62,7 @@ static void execute_command(void)
 
 void shell(void)
 {
-    int err_code = 0;
+    int32_t err_code = 0;
     printf("Welcome to the OGC shell. Use \"help\" for information on supported commands.\n");
     while (true) {
         new_line();
@@ -84,7 +84,7 @@ static void new_line(void)
     buf_used = 0;
 }
 
-static int read_command(void)
+static int32_t read_command(void)
 {
     char c;
     do {
@@ -108,7 +108,7 @@ static int read_command(void)
     return ERR_CODE_MSG_TOO_LONG;
 }
 
-static int parse_command(void)
+static int32_t parse_command(void)
 {
     const char *src = (const char *) buffer;
     char *dest;
@@ -176,7 +176,7 @@ static void cmd_mailbox(void)
         get_board_revision();
         get_arm_memory_info();
     } else {
-        for (int i = 1; i < tokens_count; i++) {
+        for (int32_t i = 1; i < tokens_count; i++) {
             if (!strcmp(tokens[i], "-revision")) {
                 get_board_revision();
             } else if (!strcmp(tokens[i], "-arm-memory-info")) {
@@ -209,7 +209,7 @@ static void get_board_revision(void)
     buffer[6] = MBOX_TAG_END;
     // tags end
 
-    int ret = mailbox_exchange(MBOX_CH_PROP, buffer);
+    int32_t ret = mailbox_exchange(MBOX_CH_PROP, buffer);
     if (ret) {
         printf("Mailbox error: get_board_revision(), %s\n", err_code_to_str(ret));
     } else {
@@ -231,7 +231,7 @@ static void get_arm_memory_info(void)
     buffer[7] = MBOX_TAG_END;
     // tags end
 
-    int ret = mailbox_exchange(MBOX_CH_PROP, buffer);
+    int32_t ret = mailbox_exchange(MBOX_CH_PROP, buffer);
     if (ret) {
         printf("Mailbox error: get_arm_memory_info(), %s\n", err_code_to_str(ret));
     } else {
@@ -242,7 +242,7 @@ static void get_arm_memory_info(void)
 
 static inline bool is_help(void)
 {
-    for (int i = 1; i < tokens_count; i++) {
+    for (int32_t i = 1; i < tokens_count; i++) {
         if (!strcmp(tokens[i], "-h") || !strcmp(tokens[i], "-help")) {
             return true;
         }

@@ -11,7 +11,7 @@
 #define MAILBOX_ERR_TIMEOUT -2
 
 volatile uint32_t *get_default_buffer(void);
-int mailbox_exchange(uint8_t channel, volatile uint32_t *buffer);
-const char* err_code_to_str(int err_code);
+int32_t mailbox_exchange(uint8_t channel, volatile uint32_t *buffer);
+const char* err_code_to_str(int32_t err_code);
 
 #endif
