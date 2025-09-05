@@ -213,7 +213,7 @@ static void get_board_revision(void)
     if (ret) {
         printf("Mailbox error: get_board_revision(), %s\n", err_code_to_str(ret));
     } else {
-        printf("Board revision\t: 0x%s\n", uint64_to_hex_str(buffer[5], 0, NULL));
+        printf("Board revision\t: 0x%X\n", buffer[5]);
     }
 }
 
@@ -235,8 +235,8 @@ static void get_arm_memory_info(void)
     if (ret) {
         printf("Mailbox error: get_arm_memory_info(), %s\n", err_code_to_str(ret));
     } else {
-        printf("ARM memory base\t: 0x%s\n", uint64_to_hex_str(buffer[5], 0, NULL));
-        printf("ARM memory size\t: 0x%s\n", uint64_to_hex_str(buffer[6], 0, NULL));
+        printf("ARM memory base\t: 0x%08X\n", buffer[5]);
+        printf("ARM memory size\t: 0x%08X\n", buffer[6]);
     }
 }
 
