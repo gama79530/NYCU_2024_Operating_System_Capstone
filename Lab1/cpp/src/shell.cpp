@@ -154,7 +154,7 @@ void Shell::commandHelp()
 void Shell::commandHello()
 {
     kernel->printer.printf(
-        "Hello world!\n"
+        "Hello C++ kernel!\n"
         "\n");
 }
 

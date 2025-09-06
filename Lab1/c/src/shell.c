@@ -157,7 +157,7 @@ static void cmd_help(void)
 static void cmd_hello(void)
 {
     printf(
-        "Hello world!\n"
+        "Hello C kernel!\n"
         "\n");
 }
 
