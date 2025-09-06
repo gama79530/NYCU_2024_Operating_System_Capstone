@@ -62,6 +62,9 @@ void Printer::vsprintf(char *s, const char *fmt, va_list args)
 void Printer::printfPutc(void *p, char c)
 {
     MiniUart *miniUart = static_cast<MiniUart *>(p);
+    if (c == '\n') {
+        miniUart->putc('\r');
+    }
     miniUart->putc(c);
 }
 

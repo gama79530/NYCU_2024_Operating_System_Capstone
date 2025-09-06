@@ -2,12 +2,6 @@
 #include "common.hpp"
 #include "peripheral.hpp"
 
-// char getc()
-// {
-//     extern MiniUart *miniUart;
-//     return miniUart->getc();
-// }
-
 MiniUart::MiniUart()
 {
     uint32_t selector;
