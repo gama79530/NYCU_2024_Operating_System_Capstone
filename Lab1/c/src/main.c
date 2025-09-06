@@ -12,11 +12,16 @@ void main()
     shell();
 }
 
-void kernel_service_init(){
+void kernel_service_init()
+{
     uart_init();
     init_printf(NULL, putc);
 }
 
-void putc(void *p, char c){
+void putc(void *p, char c)
+{
+    if (c == '\n') {
+        mini_uart_putc('\r');
+    }
     uart_putc(c);
 }
