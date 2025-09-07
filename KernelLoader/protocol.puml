@@ -1,0 +1,15 @@
+@startuml protocol
+
+title Kernel Upload Protocol
+
+participant "kernel uploader"
+participant "kernel loader"
+
+"kernel uploader" -> "kernel loader": send "#upload_kernel$" request.
+"kernel loader" -> "kernel uploader": reply "$download_kernel#" response.
+"kernel uploader" -> "kernel loader": send [4 bytes] kernel image size (little-endian)
+"kernel loader" -> "kernel uploader": reply "$start_upload#" signal
+"kernel uploader" -> "kernel loader": upload kernel image data
+"kernel loader" -> "kernel uploader": send "$done#" signal
+
+@enduml
