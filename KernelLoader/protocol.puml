@@ -5,7 +5,7 @@ title Kernel Upload Protocol
 participant "Kernel Uploader"
 participant "Kernel Loader"
 
-"Kernel Uploader" -> "Kernel Loader": Transmit "download\\n" command to initiate upload.
+"Kernel Uploader" -> "Kernel Loader": Transmit "#upload_kernel$\\n" command to initiate upload.
 "Kernel Loader" -> "Kernel Uploader": Reply with "$download_kernel#\\n" to acknowledge request.
 "Kernel Uploader" -> "Kernel Loader": Send 4-byte little-endian integer representing kernel image size.
 "Kernel Loader" -> "Kernel Uploader": Reply with "$start_upload#\\n" to signal start of data transfer.
