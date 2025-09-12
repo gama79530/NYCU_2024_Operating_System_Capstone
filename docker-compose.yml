@@ -1,0 +1,20 @@
+# docker compose run --rm operating_system_capstone
+services:
+  operating_system_capstone:
+    build:
+      dockerfile: ./Dockerfile
+    image: operating_system_capstone
+    container_name: operating_system_capstone
+    cap_add:
+      - SYS_ADMIN
+    stdin_open: true
+    tty: true
+    restart: "no"
+    entrypoint: "/bin/bash"
+    working_dir: ${PWD}
+    network_mode: "host"
+    privileged: true
+    volumes:
+      - "${PWD}:${PWD}"
+      - "/dev:/dev"
+
