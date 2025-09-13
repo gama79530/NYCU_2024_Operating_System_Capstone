@@ -1,11 +1,9 @@
 import argparse
 import os
 import serial
-import time
 
-kernel_path = './Lab1/cpp/bin/kernel8.img'
+kernel_path = './Lab1/c/bin/kernel8.img'
 port = '/dev/ttyUSB0'
-# port = '/dev/pts/5'
 baudrate = 115200
 communicator = None
 serial_timeout = 5  # seconds

@@ -1,9 +1,17 @@
 all: uploader
 
-.PHONY: uploader run
+.PHONY: uploader run lab1 lab1cpp
+
+kernel =
+
+lab1: kernel += --kernel ./Lab1/c/bin/kernel8.img
+lab1: uploader
+
+lab1cpp: kernel += --kernel ./Lab1/cpp/bin/kernel8.img
+lab1cpp: uploader
 
 uploader:
-	docker compose run --rm operating_system_capstone -c "python3 KernelUploader.py"
+	docker compose run --rm operating_system_capstone -c "python3 KernelUploader.py $(kernel)"
 
 SERIAL_PORT = /dev/ttyUSB0
 BAUD_RATE = 115200
