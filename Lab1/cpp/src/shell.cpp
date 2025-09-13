@@ -58,7 +58,7 @@ int32_t Shell::readCommand()
     do {
         c = kernel->miniUart.getc();
         if (c == '\n') {  // enter new line
-            buffer[bufferUsed++] = '\0';
+            buffer[bufferUsed] = '\0';
             kernel->printer.printf("\n");
             return 0;
         } else if (c == 0x7F) {  // c = del

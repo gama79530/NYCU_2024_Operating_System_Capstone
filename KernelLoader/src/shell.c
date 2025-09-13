@@ -61,7 +61,7 @@ void shell(void)
             continue;
         }
         // length check
-        if (buf_used == 1) {
+        if (buf_used == 0) {
             uart_putln(err_msg[err_code_to_msg(ERR_CODE_EMPTY_COMMAND)]);
             continue;
         }

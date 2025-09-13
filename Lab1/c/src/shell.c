@@ -90,7 +90,7 @@ static int32_t read_command(void)
     do {
         c = uart_getc();
         if (c == '\n') {  // enter new line
-            buffer[buf_used++] = '\0';
+            buffer[buf_used] = '\0';
             printf("\n");
             return 0;
         } else if (c == 0x7F) {  // c = del
