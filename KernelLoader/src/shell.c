@@ -145,7 +145,7 @@ static void cmd_boot(void)
         return;
     }
 
-    // asm volatile("SEV");
+    asm volatile("SEV");
     uart_putln("Transferring control to the kernel...");
     wait_msec(1000);
     kernel_entrance_t entrance = (kernel_entrance_t) &kernel_begin;
