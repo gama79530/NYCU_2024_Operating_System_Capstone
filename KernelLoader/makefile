@@ -14,9 +14,10 @@ ASMFLAGS = -I$(INC_DIR)
 LDFLAGS =
 DEBUG_FLAGS = -g
 
+CPIO_ARG = -initrd $(BIN_DIR)/initramfs.cpio
 DTB_ARG = -dtb $(BIN_DIR)/bcm2710-rpi-3-b.dtb
 
-.PHONY: all symbol-debug clean run qemu qemu-asm debug-qemu gdb pty
+.PHONY: all symbol-debug clean run qemu qemu-asm debug-qemu gdb pty package
 
 all: $(BIN_DIR)/kernel8.img
 
@@ -74,3 +75,8 @@ gdb:
 
 pty:
 	@$(QEMU) $(QEMU_FLAGS_QEMU) -serial pty -serial stdio $(DTB_ARG) $(CPIO_ARG)
+
+package:
+	@rm -rf bin/initramfs.cpio
+	cd initramfs; find . | cpio -o -H newc > ../bin/initramfs.cpio
+	
