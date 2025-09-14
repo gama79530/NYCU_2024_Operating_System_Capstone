@@ -14,9 +14,7 @@ ASMFLAGS = -I$(INC_DIR)
 LDFLAGS =
 DEBUG_FLAGS = -g
 
-# CPIO_ARG = -initrd ../initramfs.cpio
-CPIO_ARG = 
-DTB_ARG = -dtb ../bcm2710-rpi-3-b.dtb
+DTB_ARG = -dtb $(BIN_DIR)/bcm2710-rpi-3-b.dtb
 
 .PHONY: all symbol-debug clean run qemu qemu-asm debug-qemu gdb pty
 
@@ -49,7 +47,7 @@ $(BIN_DIR)/kernel8.img: $(SRC_DIR)/linker.ld $(OBJ_FILES)
 	$(OBJCOPY) $(BUILD_DIR)/kernel8.elf -O binary $@
 	
 clean:
-	rm -rf $(BUILD_DIR) $(BIN_DIR)
+	rm -rf $(BUILD_DIR) $(BIN_DIR)/kernel8.img
 
 SERIAL_PORT = /dev/ttyUSB0
 BAUD_RATE = 115200
