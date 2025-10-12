@@ -5,6 +5,8 @@
 #include "printf.hpp"
 #include "shell.hpp"
 #include "types.hpp"
+#include "device_tree.hpp"
+#include "cstring.hpp"
 
 class Kernel final
 {
@@ -13,8 +15,9 @@ public:
     Printer printer;
     Shell shell;
     Mailbox mailbox;
+    DeviceTree deviceTree;
 
-    Kernel();
+    Kernel(uint64_t x0);
     // Shell
     void run();
 };

@@ -26,10 +26,10 @@ void swap(T &a, T &b)
 }
 
 template <typename T>
-T endian_swap(T &value)
+T endian_swap(const T &value)
 {
     T ret;
-    char *src = reinterpret_cast<char *>(&value);
+    const char *src = reinterpret_cast<const char *>(&value);
     char *dst = reinterpret_cast<char *>(&ret);
     for (size_t i = 0; i < sizeof(T); i++) {
         dst[i] = src[sizeof(T) - 1 - i];

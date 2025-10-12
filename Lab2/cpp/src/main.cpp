@@ -8,7 +8,7 @@ Kernel *kernel = nullptr;
 int32_t main(uint64_t x0)
 {
     // initialize kernel instance
-    kernel = new (kernelBuffer) Kernel();
+    kernel = new (kernelBuffer) Kernel(x0);
     kernel->run();
     
     return 0;

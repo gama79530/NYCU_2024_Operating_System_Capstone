@@ -1,6 +1,20 @@
 #include "cstring.hpp"
 #include "common.hpp"
 
+extern "C" {
+void *memset(void *s, int c, size_t n)
+{
+    unsigned char uc = (unsigned char)c;
+    unsigned char *ptr = (unsigned char *)s;
+    
+    for (size_t i = 0; i < n; i++) {
+        ptr[i] = uc;
+    }
+    
+    return s;
+}
+}
+
 namespace cstr
 {
 

@@ -1,6 +1,9 @@
 #include "kernel.hpp"
 
-Kernel::Kernel() : miniUart(), printer(&miniUart), shell(), mailbox() {}
+Kernel::Kernel(uint64_t x0) : miniUart(), printer(&miniUart), shell(), mailbox(), deviceTree()
+{
+    deviceTree.init(x0);
+}
 
 void Kernel::run()
 {

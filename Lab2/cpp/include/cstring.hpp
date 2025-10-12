@@ -2,6 +2,14 @@
 #define LAB2_CPP_CSTRING_HPP
 #include "types.hpp"
 
+#ifdef __cplusplus
+extern "C" {
+void *memset(void *s, int c, size_t n);
+}
+#else
+void *memset(void *s, int c, size_t n);
+#endif
+
 namespace cstr
 {
 size_t strlen(const char *s);
