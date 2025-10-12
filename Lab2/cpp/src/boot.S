@@ -11,6 +11,7 @@
 .global initialize
 initialize:
     // read cpu id and stop slave cores
+    mov     x19, 0
     bl      get_cpu_id
     cbnz    x0, hang
 
@@ -20,10 +21,11 @@ initialize:
     bl      memzero
 
     // initialize stack pointer
-    ldr     x0, =initialize
-    mov     sp, x0
+    ldr     x9, =kernel_begin
+    mov     sp, x9
 
     // enter kernel
+    mov     x0, x19                 // pass device tree blob address
     bl      main
 
 hang:
