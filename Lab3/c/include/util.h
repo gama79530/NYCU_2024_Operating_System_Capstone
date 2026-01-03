@@ -1,11 +1,14 @@
 #ifndef LAB3_C_UTIL_H
 #define LAB3_C_UTIL_H
 #include "types.h"
+#include <stddef.h>
 
 extern uint64_t get_cpu_id(void);
 extern void memzero(void *ptr, uint64_t size);
 extern uint32_t get32(uint64_t addr);
 extern void put32(uint64_t addr, uint32_t val);
+
+#define container_of(ptr, type, member) ((type*)((void*)(ptr) - offsetof(type, member)))
 
 void wait_cycles(uint64_t n);
 
