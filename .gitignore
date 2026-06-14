@@ -10,3 +10,4 @@ build
 venv
 .vscode
 
+!Lab0/firmware/start.elf
