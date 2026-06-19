@@ -18,3 +18,17 @@ memzero:
 3:
     ret
 .size memzero, . - memzero
+
+.global get32
+.type get32, %function
+get32:
+    ldr     w0, [x0]
+    ret
+.size get32, . - get32
+
+.global put32
+.type put32, %function
+put32:
+    str     w1, [x0]
+    ret
+.size put32, . - put32
