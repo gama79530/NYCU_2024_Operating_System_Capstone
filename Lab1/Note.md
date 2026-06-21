@@ -195,6 +195,7 @@ Command table 保存名稱、usage、description 與 handler：
 | `help` | `help [command]` | 列出 commands，或顯示指定 command 的說明 |
 | `hello` | `hello` | 印出 `Hello World!` |
 | `mailbox` | `mailbox [revision\|memory]...` | 顯示全部或指定的硬體資訊 |
+| `reboot` | `reboot` | 透過 watchdog 重新啟動 Raspberry Pi |
 
 新增 command 時，只需加入 handler 與一筆 table entry。`shell_find_command` 同時供
 dispatcher 和 `help` 使用，usage 也統一由 table 取得。
@@ -266,101 +267,48 @@ command 的設計。
 ### Verbose Output
 
 `config.h` 的 `CONFIG_VERBOSE` 控制額外執行資訊，目前設為 `0`。開啟時設為 `1`，
-`LOG_VERBOSE` 便會在編譯期移除。Verbose output 包含 Mailbox request/response 與
-一般輸出與錯誤訊息不受影響。Log 不放在 polling loop 內，避免 timeout 時大量輸出。
+設為 `0` 時 `LOG_VERBOSE` 會在編譯期移除。Verbose output 包含 Mailbox request/response 與
+reboot ticks；一般輸出與錯誤訊息不受影響。Log 不放在 polling loop 內，避免
+timeout 時大量輸出。
 
 ## Reboot Command
 
 `reboot` 是進階功能，做法是透過 power management watchdog 觸發 full reset。
 
 ```c
-#define PM_PASSWORD 0x5a000000
-#define PM_RSTC     0x3F10001c
-#define PM_WDOG     0x3F100024
+#define PM_PASSWORD        0x5A000000
+#define PM_RSTC_FULL_RESET 0x00000020
 
-void reset(int tick)
+void power_reboot(void)
 {
-    put32(PM_RSTC, PM_PASSWORD | 0x20);
-    put32(PM_WDOG, PM_PASSWORD | tick);
+    put32(PM_RSTC, PM_PASSWORD | PM_RSTC_FULL_RESET);
+    data_memory_barrier();
+    put32(PM_WDOG, PM_PASSWORD | CONFIG_REBOOT_TICKS);
+    data_sync_barrier();
+
+    while (true) {
+        asm volatile("wfe");
+    }
 }
 ```
 
-注意：
+`PM_PASSWORD` 是寫入 power management registers 時必須附加的 password；
+`PM_RSTC_FULL_RESET` 選擇完整重啟，watchdog ticks 決定多久後觸發。ticks 由
+`CONFIG_REBOOT_TICKS` 統一設定，並限制在 watchdog 的 20-bit time field 內。
 
-- 這段只保證在真實 Raspberry Pi 3 上可用。
-- QEMU 上可能不會真的 reboot。
-- `tick` 不要設太大，否則會看起來像沒有反應。
+| Barrier | 全名 | 用途 |
+| --- | --- | --- |
+| `dmb sy` | Data Memory Barrier | 保證 barrier 前後的 memory accesses 維持順序 |
+| `dsb sy` | Data Synchronization Barrier | 等待 barrier 前的 memory accesses 完成 |
 
-## Suggested File Layout
+此處的 `dmb sy` 保證 reset mode 先於 watchdog 生效；`dsb sy` 則確認兩次 MMIO
+writes 都已完成，再進入 `wfe`。`sy` 表示 full-system scope。
 
-後續實作 Lab 1 時，可以先用類似下面的結構：
+`power_reboot` 標記為 `noreturn`，因為成功時系統會重啟；若平台沒有實作 reset，
+CPU 也只會停在等待迴圈，不會錯誤地返回 Shell。
 
-```text
-Lab1/
-  include/
-    mailbox.h
-    mini_uart.h
-    peripheral.h
-    power.h
-    shell.h
-    string.h
-    util.h
-  src/
-    boot.S
-    linker.ld
-    mailbox.c
-    mini_uart.c
-    main.c
-    power.c
-    shell.c
-    string.c
-    util.S
-    util.c
-  makefile
-  spec.pdf
-  Note.md
-```
-
-## Build and Run
-
-QEMU 執行：
-
-```bash
-qemu-system-aarch64 -M raspi3b -kernel kernel8.img -serial null -serial stdio
-```
-
-如果 Makefile 已經包好：
-
-```bash
-make
-make run
-```
-
-實機執行時，把 `kernel8.img` 放到 SD card boot partition，然後用 serial console：
-
-```bash
-sudo screen /dev/ttyUSB0 115200
-```
-
-## Verification Checklist
-
-- Boot code 只讓 core 0 進入 kernel。
-- `.bss` 會在進入 C code 前清成 0。
-- `sp` 在進入 C code 前已設定。
-- MMIO base 使用 Raspberry Pi 3 的 `0x3F000000`。
-- MMIO access 使用 `volatile`。
-- GPIO 14/15 已切到 ALT5。
-- mini UART 使用 115200 baud、8-bit mode、polling I/O。
-- 輸出 `\n` 時會補 `\r`。
-- 開機後 UART 有印 prompt。
-- `help` 能列出 commands。
-- `hello` 印出 `Hello World!`。
-- Enter 換行正常，畫面不會越跑越右邊。
-- Backspace 不會讓 command buffer underflow。
-- Mailbox buffer 是 16-byte aligned。
-- Mailbox 使用 property channel 8。
-- Mailbox 至少印出 board revision、ARM memory base、ARM memory size。
-- `reboot` 在真實 Raspberry Pi 3 上會重開機。
+此功能只保證在真實 Raspberry Pi 3 上運作。QEMU 可以驗證 command 與程式流程，
+但不保證會真的 reboot。
 
 ## 參考資料
 

@@ -39,3 +39,10 @@ data_memory_barrier:
     dmb     sy
     ret
 .size data_memory_barrier, . - data_memory_barrier
+
+.global data_sync_barrier
+.type data_sync_barrier, %function
+data_sync_barrier:
+    dsb     sy
+    ret
+.size data_sync_barrier, . - data_sync_barrier
