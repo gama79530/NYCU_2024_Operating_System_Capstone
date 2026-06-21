@@ -194,6 +194,7 @@ Command table 保存名稱、usage、description 與 handler：
 | --- | --- | --- |
 | `help` | `help [command]` | 列出 commands，或顯示指定 command 的說明 |
 | `hello` | `hello` | 印出 `Hello World!` |
+| `mailbox` | `mailbox [revision\|memory]...` | 顯示全部或指定的硬體資訊 |
 
 新增 command 時，只需加入 handler 與一筆 table entry。`shell_find_command` 同時供
 dispatcher 和 `help` 使用，usage 也統一由 table 取得。
@@ -212,132 +213,61 @@ Shell 使用固定大小的 buffer 和 `argv` array，容量由 `config.h` 的
 ## Mailbox Property Interface
 
 Raspberry Pi 3 有些硬體資訊與 peripheral 設定由 VideoCore firmware 管理。ARM CPU
-透過 mailbox 傳遞 request buffer，讓 firmware 執行查詢或設定。
+透過 property channel 傳遞 request buffer。本 Lab 使用它查詢 board revision 與
+ARM memory base/size，並由 `mailbox` shell command 顯示結果。
 
-Lab 1 至少要查詢並印出：
-
-- Board revision。
-- ARM memory base address。
-- ARM memory size。
-
-### Registers and Channel
-
-```c
-#define MBOX_BASE   (MMIO_BASE + 0x0000B880)
-#define MBOX_READ   (MBOX_BASE + 0x00)
-#define MBOX_STATUS (MBOX_BASE + 0x18)
-#define MBOX_WRITE  (MBOX_BASE + 0x20)
-
-#define MBOX_EMPTY 0x40000000
-#define MBOX_FULL  0x80000000
-
-#define MBOX_CH_PROP 8
+```text
+mailbox                    # 顯示全部資訊
+mailbox revision           # 只顯示 board revision
+mailbox memory             # 只顯示 ARM memory
+mailbox revision memory    # 顯示兩者
 ```
 
-### Message Buffer
+參數會先全部驗證，再執行查詢；未知參數不會產生部分輸出，重複參數也只查詢一次。
 
-Mailbox property buffer 是 32-bit word array。因為 message 的低 4 bits 會拿來放
-channel number，所以 buffer 必須 16-byte aligned。
+### Message Format
 
-```c
-volatile unsigned int __attribute__((aligned(16))) mailbox[36];
-```
-
-Buffer 格式：
+Message 是 16-byte aligned 的 `volatile uint32_t` array；encoded request 的高 28 bits
+放 buffer address，低 4 bits 放 channel `8`。整體格式如下：
 
 | Index | 內容 |
 | --- | --- |
 | `buffer[0]` | 整個 message buffer 大小，單位 byte |
 | `buffer[1]` | request / response code |
-| `buffer[2...]` | 一個或多個 tags |
-| 最後 | end tag，值為 `0` |
+| `buffer[2...]` | tag ID、value buffer size、tag status 與 values |
+| 最後一個 word | end tag `0` |
 
-常用 code：
+Firmware 會把 tag status 的 bit 31 設為 response bit，低 31 bits 則表示實際回傳
+長度。例如 `0x80000004` 代表成功回傳 4 bytes。`mailbox_validate_tag` 因此檢查：
 
-```c
-#define MBOX_REQUEST     0x00000000
-#define MBOX_RESPONSE    0x80000000
-#define MBOX_TAG_REQUEST 0x00000000
-#define MBOX_TAG_END     0x00000000
-```
-
-Tag 格式：
-
-| 欄位 | 意義 |
-| --- | --- |
-| tag identifier | 要查詢或設定的項目 |
-| value buffer size | value buffer 長度，單位 byte |
-| request / response code | request 時填 `0` |
-| value buffer | request 參數或 response 結果 |
+- response bit 已設定。
+- 回傳長度不少於呼叫端需要的資料量。
+- 回傳長度沒有超過 tag 的 value buffer 容量。
 
 ### Exchange Flow
 
-1. 把 request 寫入 16-byte aligned buffer。
-2. 把 buffer address 的低 4 bits 清掉，再 OR 上 channel number。
-3. 等 `MBOX_STATUS` 沒有 `MBOX_FULL`。
-4. 寫入 `MBOX_WRITE`。
-5. 等 `MBOX_STATUS` 沒有 `MBOX_EMPTY`。
-6. 讀 `MBOX_READ`，確認回來的值等於送出的 encoded address。
-7. 確認 `buffer[1] == MBOX_RESPONSE`。
+1. 填好 message，等待 mailbox 可寫。
+2. 執行 `dmb sy`，確保 message writes 排在 `MAILBOX_WRITE` 之前，再送出 request。
+3. 等待 mailbox 可讀，忽略不屬於本次 request 的 response。
+4. 收到相符 response 後執行 `dmb sy`，再讀取 firmware 更新的 buffer。
+5. 驗證整體 response code 與 tag status。
 
-Pseudo code：
+`dmb sy` 是記憶體存取的順序邊界，不是關閉 reordering 的開關；它只要求邊界前後的
+memory accesses 維持順序，也不會清除或刷新 cache。
 
-```c
-unsigned int msg = ((unsigned long) buffer & ~0xf) | (channel & 0xf);
+所有 polling 都受 `CONFIG_MAILBOX_TIMEOUT` 限制。這個值是 polling 次數上限，不是
+固定時間；用途是避免 firmware 或位址設定異常時讓 kernel 永久卡住。底層錯誤以
+`mailbox_error_t` 回傳，Shell 再透過 `mailbox_error_string` 顯示原因。
 
-while (get32(MBOX_STATUS) & MBOX_FULL) {
-}
-put32(MBOX_WRITE, msg);
+`mailbox_get_board_revision` 使用 tag `0x00010002`；`mailbox_get_arm_memory` 使用
+tag `0x00010005`。兩者共用一個 aligned buffer，符合目前 single-core、循序執行
+command 的設計。
 
-do {
-    while (get32(MBOX_STATUS) & MBOX_EMPTY) {
-    }
-} while (get32(MBOX_READ) != msg);
+### Verbose Output
 
-return buffer[1] == MBOX_RESPONSE;
-```
-
-### Query Board Revision
-
-```c
-#define MBOX_TAG_GETREVISION 0x00010002
-
-mailbox[0] = 7 * 4;
-mailbox[1] = MBOX_REQUEST;
-mailbox[2] = MBOX_TAG_GETREVISION;
-mailbox[3] = 4;
-mailbox[4] = MBOX_TAG_REQUEST;
-mailbox[5] = 0;
-mailbox[6] = MBOX_TAG_END;
-```
-
-成功後：
-
-```c
-revision = mailbox[5];
-```
-
-### Query ARM Memory
-
-```c
-#define MBOX_TAG_GETMEMORY 0x00010005
-
-mailbox[0] = 8 * 4;
-mailbox[1] = MBOX_REQUEST;
-mailbox[2] = MBOX_TAG_GETMEMORY;
-mailbox[3] = 8;
-mailbox[4] = MBOX_TAG_REQUEST;
-mailbox[5] = 0;
-mailbox[6] = 0;
-mailbox[7] = MBOX_TAG_END;
-```
-
-成功後：
-
-```c
-arm_memory_base = mailbox[5];
-arm_memory_size = mailbox[6];
-```
+`config.h` 的 `CONFIG_VERBOSE` 控制額外執行資訊，目前設為 `0`。開啟時設為 `1`，
+`LOG_VERBOSE` 便會在編譯期移除。Verbose output 包含 Mailbox request/response 與
+一般輸出與錯誤訊息不受影響。Log 不放在 polling loop 內，避免 timeout 時大量輸出。
 
 ## Reboot Command
 

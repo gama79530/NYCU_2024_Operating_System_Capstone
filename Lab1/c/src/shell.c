@@ -2,6 +2,7 @@
 
 #include "config.h"
 #include "error.h"
+#include "mailbox.h"
 #include "mini_uart.h"
 #include "printf.h"
 #include "string.h"
@@ -35,11 +36,13 @@ static void shell_dispatch(size_t argc, char *argv[]);
 /* command handlers */
 static void cmd_help(size_t argc, char *argv[]);
 static void cmd_hello(size_t argc, char *argv[]);
+static void cmd_mailbox(size_t argc, char *argv[]);
 
 /* Private data */
 static const command_t commands[] = {
     {"help", "help [command]", "List commands or show help for one command", cmd_help},
     {"hello", "hello", "Print Hello World!", cmd_hello},
+    {"mailbox", "mailbox [revision|memory]...", "Print all or selected hardware information", cmd_mailbox},
 };
 
 static const char *const shell_error_messages[] = {
@@ -234,4 +237,46 @@ static void cmd_hello(size_t argc, char *argv[])
     }
 
     printf("Hello World!\n");
+}
+
+static void cmd_mailbox(size_t argc, char *argv[])
+{
+    bool show_revision = argc == 1;
+    bool show_memory = argc == 1;
+    uint32_t revision;
+    uint32_t memory_base;
+    uint32_t memory_size;
+    mailbox_error_t error;
+
+    for (size_t i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "revision") == 0) {
+            show_revision = true;
+        } else if (strcmp(argv[i], "memory") == 0) {
+            show_memory = true;
+        } else {
+            printf("Unknown mailbox query: %s\n", argv[i]);
+            return;
+        }
+    }
+
+    if (show_revision) {
+        error = mailbox_get_board_revision(&revision);
+        if (error != MAILBOX_SUCCESS) {
+            printf("Mailbox error: %s\n", mailbox_error_string(error));
+            return;
+        }
+
+        printf("Board revision : 0x%08X\n", revision);
+    }
+
+    if (show_memory) {
+        error = mailbox_get_arm_memory(&memory_base, &memory_size);
+        if (error != MAILBOX_SUCCESS) {
+            printf("Mailbox error: %s\n", mailbox_error_string(error));
+            return;
+        }
+
+        printf("ARM memory base: 0x%08X\n", memory_base);
+        printf("ARM memory size: 0x%08X\n", memory_size);
+    }
 }

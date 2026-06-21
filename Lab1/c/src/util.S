@@ -32,3 +32,10 @@ put32:
     str     w1, [x0]
     ret
 .size put32, . - put32
+
+.global data_memory_barrier
+.type data_memory_barrier, %function
+data_memory_barrier:
+    dmb     sy
+    ret
+.size data_memory_barrier, . - data_memory_barrier
