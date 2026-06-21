@@ -173,41 +173,41 @@ FIFOs。Baud register 設為 `270`，搭配 250 MHz core clock 得到約 115200 
 
 ## Simple Shell
 
-Shell 的工作是用 UART 讀入一行 command，解析後呼叫對應 handler。
+Shell 透過 UART 讀取一行文字，解析成 `argc/argv`，再從 command table 找到對應
+handler。輸出統一使用 tiny `printf`，其 callback 最後呼叫 `mini_uart_putc`。主迴圈
+每次顯示 `$ ` prompt，執行完成後繼續等待下一行。
 
-Lab 1 spec 要求的基本 command：
+Kernel 進入 shell 前依序初始化 UART 與 formatted output：
 
-| Command | 行為 |
-| --- | --- |
-| `help` | 印出所有支援的 commands |
-| `hello` | 印出 `Hello World!` |
+```c
+mini_uart_init();
+init_printf(NULL, printf_putc);
+shell_run();
+```
 
-後續為了 mailbox 和 reboot，可以一起規劃：
+`printf_putc(void *context, char c)` 是 callback adapter，用來配合 tiny `printf` 的
+函式型別；實際字元輸出與 `\n` 到 `\r\n` 的轉換仍由 `mini_uart_putc` 負責。
 
-| Command | 行為 |
-| --- | --- |
-| `mailbox` | 查詢或列出 mailbox 相關資訊 |
-| `reboot` | 觸發 watchdog reset，實機限定 |
+Command table 保存名稱、usage、description 與 handler：
 
-Shell loop：
+| Command | Usage | 行為 |
+| --- | --- | --- |
+| `help` | `help [command]` | 列出 commands，或顯示指定 command 的說明 |
+| `hello` | `hello` | 印出 `Hello World!` |
 
-1. 印 prompt，例如 `# `。
-2. 從 UART 逐字讀入。
-3. Echo 可見字元。
-4. 遇到 Enter 時結束一行。
-5. 解析 command。
-6. 執行 handler 後回到 prompt。
+新增 command 時，只需加入 handler 與一筆 table entry。`shell_find_command` 同時供
+dispatcher 和 `help` 使用，usage 也統一由 table 取得。
 
-輸入處理要注意：
+輸入與解析規則：
 
-- `\r` / `\n`：視為 Enter。
-- Backspace：刪除 buffer 最後一個字元，畫面輸出 `\b \b`。
-- Buffer 長度：避免 command buffer overflow。
-- 空行：直接重新印 prompt。
-- 不支援的 command：印出錯誤訊息。
+- Echo 可見 ASCII；Enter 完成一行。
+- `\b` 和 `0x7f` 都視為刪除，輸出 `\b \b` 更新畫面。
+- 分別記錄 buffer length 與 display length；輸入超長後仍可 Backspace 回合法長度。
+- Parser 忽略開頭、結尾與連續空白，並直接在 buffer 中以 `\0` 分隔 arguments。
+- 空行不執行 command；未知 command、過長輸入與過多 arguments 會顯示錯誤。
 
-Command dispatch 可以先用 `if/else`，Lab 1 command 數量還很少；之後 command 變多
-再改成 table 也可以。
+Shell 使用固定大小的 buffer 和 `argv` array，容量由 `config.h` 的
+`CONFIG_SHELL_BUFFER_SIZE`、`CONFIG_SHELL_MAX_ARGS` 控制，不需要 heap。
 
 ## Mailbox Property Interface
 
