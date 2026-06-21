@@ -83,4 +83,20 @@
 #define AUX_SPI1_IO (AUX_BASE + 0x000000D0)
 #define AUX_SPI1_PEEK (AUX_BASE + 0x000000D4)
 
+/*****************************************************************************************
+ * MAILBOX
+ * ref: https://github.com/raspberrypi/firmware/wiki/Mailbox-property-interface
+ ******************************************************************************************/
+#define MAILBOX_BASE (MMIO_BASE + 0x0000B880)
+
+#define MAILBOX_READ (MAILBOX_BASE + 0x00000000)
+#define MAILBOX_POLL (MAILBOX_BASE + 0x00000010)
+#define MAILBOX_SENDER (MAILBOX_BASE + 0x00000014)
+#define MAILBOX_STATUS (MAILBOX_BASE + 0x00000018)
+#define MAILBOX_CONFIG (MAILBOX_BASE + 0x0000001C)
+#define MAILBOX_WRITE (MAILBOX_BASE + 0x00000020)
+
+#define MAILBOX_STATUS_EMPTY 0x40000000
+#define MAILBOX_STATUS_FULL 0x80000000
+
 #endif
