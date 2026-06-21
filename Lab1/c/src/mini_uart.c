@@ -3,11 +3,15 @@
 #include "types.h"
 #include "util.h"
 
-/* private function declaration */
+/* Private types */
+
+/* Private function declarations */
 static char mini_uart_getb(void);
 static void mini_uart_putb(char c);
 
-/* function implementation */
+/* Private data */
+
+/* Function implementations */
 void mini_uart_init(void)
 {
     uint32_t selector;
