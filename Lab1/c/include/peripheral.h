@@ -99,4 +99,13 @@
 #define MAILBOX_STATUS_EMPTY 0x40000000
 #define MAILBOX_STATUS_FULL 0x80000000
 
+/*****************************************************************************************
+ * POWER
+ *****************************************************************************************/
+#define PM_BASE (MMIO_BASE + 0x00100000)
+
+#define PM_RSTC (PM_BASE + 0x0000001C)
+#define PM_RSTS (PM_BASE + 0x00000020)
+#define PM_WDOG (PM_BASE + 0x00000024)
+
 #endif

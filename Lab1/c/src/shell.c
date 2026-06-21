@@ -4,6 +4,7 @@
 #include "error.h"
 #include "mailbox.h"
 #include "mini_uart.h"
+#include "power.h"
 #include "printf.h"
 #include "string.h"
 #include "types.h"
@@ -37,12 +38,14 @@ static void shell_dispatch(size_t argc, char *argv[]);
 static void cmd_help(size_t argc, char *argv[]);
 static void cmd_hello(size_t argc, char *argv[]);
 static void cmd_mailbox(size_t argc, char *argv[]);
+static void cmd_reboot(size_t argc, char *argv[]);
 
 /* Private data */
 static const command_t commands[] = {
     {"help", "help [command]", "List commands or show help for one command", cmd_help},
     {"hello", "hello", "Print Hello World!", cmd_hello},
     {"mailbox", "mailbox [revision|memory]...", "Print all or selected hardware information", cmd_mailbox},
+    {"reboot", "reboot", "Reboot the Raspberry Pi", cmd_reboot},
 };
 
 static const char *const shell_error_messages[] = {
@@ -279,4 +282,15 @@ static void cmd_mailbox(size_t argc, char *argv[])
         printf("ARM memory base: 0x%08X\n", memory_base);
         printf("ARM memory size: 0x%08X\n", memory_size);
     }
+}
+
+static void cmd_reboot(size_t argc, char *argv[])
+{
+    if (argc != 1) {
+        shell_print_usage(shell_find_command(argv[0]));
+        return;
+    }
+
+    printf("Rebooting...\n");
+    power_reboot();
 }

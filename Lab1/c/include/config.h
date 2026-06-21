@@ -28,4 +28,11 @@
 #error "CONFIG_MAILBOX_TIMEOUT must be at least 1"
 #endif
 
+/* power.c */
+#define CONFIG_REBOOT_TICKS 100
+
+#if CONFIG_REBOOT_TICKS < 1 || CONFIG_REBOOT_TICKS > 0x000FFFFF
+#error "CONFIG_REBOOT_TICKS must fit the watchdog time field"
+#endif
+
 #endif
