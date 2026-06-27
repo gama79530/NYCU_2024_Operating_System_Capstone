@@ -1,9 +1,42 @@
 # Lab 2 Note
 
-Lab 2 的目標是把 Lab 1 的互動式 kernel 延伸到更完整的 booting 流程。這次會先做
-一個透過 UART 載入 kernel image 的 bootloader，接著讓 kernel 能讀取 initial
-ramdisk 裡的檔案，並加入 early boot 階段可用的 simple allocator。進階部分則包含
-bootloader self relocation 與 flattened devicetree parser。
+Lab 2 的目標是把 Lab 1 的互動式 kernel 延伸到更完整的 booting 流程。這次會先直接做
+一個 self-relocating UART bootloader：firmware 可以照預設把 bootloader 載入
+`0x80000`，bootloader 啟動後先搬移自己，再透過 UART 載入真正的 kernel image 並跳轉。
+接著讓 kernel 能讀取 initial ramdisk 裡的檔案，並加入 early boot 階段可用的 simple
+allocator。最後再處理 flattened devicetree parser。
+
+## Bootloader 與 Kernel Image
+
+Raspberry Pi firmware 開機時會從 SD card 載入指定的 image，然後跳進去執行。在
+Lab 1 中，這個 image 就是 kernel 本身，也就是 `kernel8.img`。每次修改 kernel 後，都
+需要重新把新的 image 放到 SD card；實機除錯時，這代表會頻繁拔插 SD card。
+
+Lab 2 引入一個更小的 bootloader 作為第一個被 firmware 載入的程式。bootloader 的任務
+不是提供完整 kernel 功能，而是建立最基本的 UART I/O，從 host 接收真正要測試的 kernel
+image，將它放到 kernel 預期的執行位址，最後跳轉到 kernel。
+
+```text
+Lab 1:
+firmware -> kernel8.img
+
+Lab 2:
+firmware -> bootloader.img -> receive kernel8.img over UART -> kernel
+```
+
+這樣做的主要目的：
+
+| 目的 | 說明 |
+| --- | --- |
+| 降低實機除錯成本 | bootloader 固定放在 SD card，之後只要透過 UART 傳新的 kernel |
+| 分離載入與 kernel 本體 | bootloader 負責傳輸與跳轉，kernel 可以維持自己的 entry/layout |
+| 支援後續 boot 資料 | initramfs、dtb 等資料會逐步納入 boot flow |
+| 練習真實 boot chain | 實際系統常有多階段 bootloader，而不是 firmware 直接載入完整 OS |
+
+actual kernel 仍希望放在 `0x80000` 執行；但 firmware 預設也會把第一個 image 載入
+`0x80000`，因此 bootloader 和 kernel 會競爭同一段記憶體。basic 作法是用
+`config.txt` 把 bootloader 載到別的位置；本筆記後續直接採 self-relocating bootloader，
+讓 bootloader 啟動後先搬移自己，再把 `0x80000` 留給真正的 kernel。
 
 ## 實作總覽
 
@@ -11,39 +44,40 @@ bootloader self relocation 與 flattened devicetree parser。
 
 | 項目 | 主要任務 | 可能檔案 |
 | --- | --- | --- |
-| UART bootloader | 透過 UART 接收 kernel image，寫入目標位址後跳轉 | `boot.S`, `main.c`, `mini_uart.*`, `linker.ld` |
-| Kernel loading config | 讓 firmware 載入 bootloader 到不會和 kernel 重疊的位置 | `config.txt`, `linker.ld`, `makefile` |
+| Self-relocating UART bootloader | 啟動後搬移 bootloader，透過 UART 接收 kernel image，寫入 `0x80000` 後跳轉 | `boot.S`, `main.c`, `mini_uart.*`, `linker.ld` |
 | Initial ramdisk | 建立 cpio archive，kernel 解析 newc 格式並讀取檔案內容 | `cpio.*`, `shell.c`, `makefile`, `rootfs/` |
 | Simple allocator | 在 early boot 階段提供只配置、不釋放的連續記憶體配置器 | `allocator.*`, `linker.ld`, `config.h` |
-| Bootloader relocation | bootloader 啟動後搬移自己，避免與 kernel loading address 重疊 | `boot.S`, `linker.ld`, `main.c` |
 | Devicetree | 解析 FDT，遍歷 nodes/properties，從 dtb 取得 initramfs 位址 | `fdt.*`, `boot.S`, `main.c` |
 | Build and run | 分別建置 bootloader、kernel、initramfs，使用 QEMU 和實機驗證 | `makefile`, `config.txt` |
 
 建議實作順序：
 
 1. 先確認 Lab 1 kernel 在 Lab 2 目錄中仍可 build/run。
-2. 拆出 bootloader image 和 actual kernel image，確認 linker address 不互相重疊。
-3. 完成 UART bootloader 的傳輸協定、接收流程與跳轉。
-4. 建立 `initramfs.cpio`，先用 hardcoded address 解析 newc archive。
-5. 加入 shell command 來列出檔案與讀取指定檔案內容。
-6. 實作 simple allocator，將需要 early allocation 的資料改成透過它取得。
-7. 進階再補 bootloader self relocation。
-8. 最後解析 devicetree，改由 dtb 取得 initramfs 載入範圍。
+2. 直接完成 self-relocating UART bootloader end-to-end。
+3. 建立 `initramfs.cpio`，先用 hardcoded address 解析 newc archive。
+4. 加入 shell command 來列出檔案與讀取指定檔案內容。
+5. 實作 simple allocator，將需要 early allocation 的資料改成透過它取得。
+6. 最後解析 devicetree，改由 dtb 取得 initramfs 載入範圍，並讓 bootloader 傳遞 dtb address。
 
 ## UART Bootloader
 
-Lab 2 的 basic exercise 1 要實作一個被 Raspberry Pi firmware 載入的 bootloader。
-這個 bootloader 本身不是最終 kernel，而是透過 UART 從 host 接收真正要執行的
-kernel image，寫入指定記憶體位址後跳轉過去。
+Lab 2 的 basic exercise 1 要實作一個被 Raspberry Pi firmware 載入的 bootloader；
+advanced exercise 1 則要求 bootloader 可以 self relocate。這份筆記後續直接採用
+self-relocating bootloader path，不另外維護 `kernel_address=0x60000` 的 basic-only
+版本。
 
 ```text
-firmware -> bootloader.img -> UART receive kernel8.img -> jump to kernel
+firmware -> bootloader at 0x80000
+         -> copy bootloader to safe address
+         -> continue at relocated bootloader
+         -> UART receive kernel8.img to 0x80000
+         -> jump to kernel
 ```
 
-### Loading Address
+### Basic Alternative
 
-如果 actual kernel 仍要載入並執行在 `0x80000`，bootloader 就不能也佔用同一段記憶體。
-Basic part 可以先用 `config.txt` 要求 firmware 把 bootloader 放到其他位置：
+basic-only 作法可以用 `config.txt` 要求 firmware 把 bootloader 放到其他位置，避免它和
+actual kernel 的 `0x80000` 載入位址重疊：
 
 ```text
 kernel_address=0x60000
@@ -51,32 +85,115 @@ kernel=bootloader.img
 arm_64bit=1
 ```
 
-需要搭配 linker script，讓 bootloader 的 link address 與 `kernel_address` 一致。
-actual kernel 的 linker script 則可以維持從 `0x80000` 開始。
+但本 lab 後續不走這條路線；我們直接讓 bootloader 支援 relocation，因此不需要依賴
+`kernel_address=`。
+
+若要在 QEMU 模擬 basic-only 的「把 loader 放到別的位置」作法，可以不用 `-kernel`，
+改用 generic loader device 指定位址，例如：
+
+```bash
+qemu-system-aarch64 -M raspi3b -display none -serial null -serial stdio \
+    -device loader,file=bootloader.img,addr=0x60000,cpu-num=0
+```
+
+這條路線只作為對照；目前主線仍是 self-relocating bootloader。
+
+### Self Relocation
+
+bootloader 一開始可以被載入到 `0x80000`。為了稍後把 actual kernel image 寫回
+`0x80000`，bootloader 必須先把自己搬到安全位置，並跳到 relocated code 繼續執行。
+
+第一版設計先保持固定 memory map：
+
+| 項目 | 位址 |
+| --- | --- |
+| Original bootloader load address | `0x80000` |
+| Relocated bootloader address | `0x60000` |
+| Actual kernel load address | `0x80000` |
+
+實作時需要特別釐清：
+
+- bootloader image 的起訖 linker symbols。
+- relocation destination 是否會和 stack、kernel、initramfs、dtb 重疊。
+- copy range 要包含繼續執行所需的 `.text`、`.rodata`、`.data`，並處理 `.bss` 狀態。
+- copy 完成後如何跳到 relocated code 的對應位置。
+- relocation 前後 absolute address、literal pool、global data 是否仍正確。
+- 開始寫 `0x80000` 前，bootloader 必須已經不依賴原位置內容。
+
+目前 bootloader 獨立放在 repo 根目錄的 `BootLoader/`，不是放在單一 lab 裡。這樣後續
+Lab 3 之後仍可沿用同一個 UART loader，只要各 lab 產出自己的 actual kernel image。
+`BootLoader/src/linker.ld` 將 bootloader link 在 `0x60000`，但 firmware/QEMU 仍會把
+raw image 載到 `0x80000`。`BootLoader/src/boot.S` 早期會把整個 bootloader 從
+`0x80000` copy 到 `0x60000`，清 relocated `.bss`，設定 stack，最後跳到 relocated
+`bootloader_main`。
 
 ### UART Transfer Protocol
 
-spec 只要求透過 UART 載入 binary，協定可以保持簡單。待實作時需要決定：
+spec 只要求透過 UART 載入 binary，協定可以保持簡單。目前 bootloader 先進入互動式
+shell，讓畫面停在 `(bootloader)$ ` prompt。使用者可以輸入 `help` 確認目前仍在
+bootloader；輸入 `upload` 後才進入 binary transfer protocol，輸入 `boot` 後才跳到
+actual kernel。
+
+| Command | 行為 |
+| --- | --- |
+| `help` | 顯示 bootloader commands |
+| `upload` | 透過 UART 接收 kernel image |
+| `boot` | 跳轉到已載入的 kernel |
+
+```mermaid
+sequenceDiagram
+    title UART kernel upload protocol
+    participant Host as Host KernelUploader.py
+    participant Loader as BootLoader shell
+    participant Kernel as Actual kernel
+
+    Host->>Loader: send upload command
+    Loader-->>Host: reply $ready#
+    Host->>Loader: send magic "KERN"
+    Host->>Loader: send image size, little-endian u32
+    Loader-->>Host: reply $start#
+    Host->>Loader: send raw kernel image bytes
+    Loader->>Loader: write kernel image to 0x80000
+    Loader->>Loader: sync instruction visibility
+    Loader-->>Host: reply $done#
+    Host->>Loader: send boot command
+    Loader->>Kernel: jump to 0x80000 with x0 = dtb_addr
+```
+
+`upload` 使用固定的 host-to-loader protocol：
 
 | 欄位 | 用途 |
 | --- | --- |
-| Magic | 確認 host 送來的是預期格式 |
-| Image size | bootloader 要接收多少 bytes |
+| Magic | 4 bytes，ASCII `KERN` |
+| Image size | 4-byte little-endian kernel image size |
 | Payload | raw kernel image |
-| Checksum | 可選，用來檢查傳輸資料是否完整 |
 
-最小可行版本可以先傳固定 endian 的 image size，接著連續傳送 payload。若要降低除錯成本，
-建議讓 bootloader 在每個階段透過 UART 印出狀態，例如 waiting、receiving、jumping。
+bootloader 會用簡單文字 token 回報狀態：
+
+| Token | 意義 |
+| --- | --- |
+| `$ready#` | bootloader 已進入 upload command，host 可以開始送 magic/size |
+| `$start#` | magic/size 驗證完成，host 可以送 payload |
+| `$done#` | payload 接收完成，回到 `(bootloader)$ ` prompt |
+| `$bad_magic#` | magic 不符 |
+| `$bad_size:<hex>#` | size 為 0 或超過上限 |
+
+Host 端 uploader 放在 repo 根目錄的 `KernelUploader.py`，不混進 `BootLoader/`。常用方式：
+
+```bash
+make lab2 SERIAL_PORT=/dev/ttyUSB0
+python3 KernelUploader.py --kernel ./Lab2/c/bin/kernel8.img --port /dev/ttyUSB0
+```
 
 ### Jump to Kernel
 
 接收完成後，bootloader 需要跳到 actual kernel 的 entry address：
 
 ```c
-typedef void (*kernel_entry_t)(void);
+typedef void (*kernel_entry_t)(uint64_t dtb_addr);
 
 kernel_entry_t kernel = (kernel_entry_t)0x80000;
-kernel();
+kernel(dtb_addr);
 ```
 
 實作時要注意：
@@ -88,12 +205,12 @@ kernel();
 
 ### Host Sender
 
-Host 端可以用 Python 直接寫 serial device：
-
-```python
-with open("/dev/ttyUSB0", "wb", buffering=0) as tty:
-    tty.write(...)
-```
+Host sender 不屬於 `BootLoader/`，而是根目錄共用工具 `KernelUploader.py`。它使用
+`pyserial` 開啟 serial port，只負責 upload 與可選的 `boot`，不接管後續 kernel shell
+互動。流程是等待 `(bootloader)$ ` prompt，送出 `upload` command，等待 `$ready#`，
+送出 `KERN + size + payload`，等待 `$start#` 後傳 kernel image，最後確認 `$done#`。
+預設會自動送 `boot`，如果只要上傳不跳轉可加 `--no-boot`。進入 kernel 後若要互動，
+仍使用 `make run` 或 `screen`。
 
 QEMU 可用 pseudo TTY 測試：
 
@@ -101,12 +218,17 @@ QEMU 可用 pseudo TTY 測試：
 qemu-system-aarch64 -serial null -serial pty ...
 ```
 
-待補：
+實機使用注意：
 
-- [ ] bootloader 與 kernel 的目錄/target 命名方式。
-- [ ] host sender script 的實際 protocol。
-- [ ] QEMU 測試指令。
-- [ ] 實機 `config.txt` 與 SD card 放置方式。
+- SD card boot partition 的 `kernel8.img` 應該放 `BootLoader/bin/kernel8.img`，不是各 lab 的
+  actual kernel image。
+- `make run` 目前會用 `sudo screen` 開 serial；在 screen 裡 `Ctrl-a d` 是 detach，不是
+  關閉，detached screen 仍會佔住 `/dev/ttyUSB0` 並吃掉 UART 輸出。
+- 離開 screen 時使用 `Ctrl-a k` 再按 `y`，或用 `sudo screen -ls` 找 session 後執行
+  `sudo screen -X -S <session> quit`。
+- 若 uploader 讀不到 `(bootloader)$ `，先檢查 `sudo fuser -v /dev/ttyUSB0` 與
+  `sudo screen -ls`。
+- 長期建議把使用者加入 `dialout` group，避免 uploader 和 screen 都需要 `sudo`。
 
 ## Initial Ramdisk
 
@@ -208,30 +330,6 @@ heap_begin -> current bump pointer -> heap_end
 - [ ] 使用 allocator 的第一個 call site。
 - [ ] OOM 的錯誤訊息與測試方式。
 
-## Bootloader Self Relocation
-
-Advanced exercise 1 要讓 bootloader 即使被載入到 `0x80000`，也能先搬移自己到別處，
-再把 actual kernel 載入 `0x80000`。完成後就不需要依賴 `config.txt` 的
-`kernel_address=`。
-
-```text
-firmware -> bootloader at 0x80000 -> copy bootloader to safe address -> continue there
-                                      -> load kernel to 0x80000 -> jump
-```
-
-實作時需要特別釐清：
-
-- bootloader image 的起訖 linker symbols。
-- relocation destination 是否會和 stack、kernel、initramfs、dtb 重疊。
-- copy 完成後如何跳到 relocated code 的對應位置。
-- relocation 前後 absolute address、literal pool、global data 是否仍正確。
-
-待補：
-
-- [ ] relocation memory map。
-- [ ] assembly/C 邊界設計。
-- [ ] 不使用 `kernel_address=` 的實機驗證紀錄。
-
 ## Devicetree
 
 Advanced exercise 2 要解析 flattened devicetree，也就是 dtb。目標是提供一個可遍歷
@@ -296,17 +394,18 @@ Lab 2 會比 Lab 1 多出幾個 artifact：
 
 | Artifact | 用途 |
 | --- | --- |
-| `bootloader.img` | 由 firmware 載入，負責 UART 載入 kernel |
+| `BootLoader/bin/kernel8.img` | 由 firmware 載入，負責 UART 載入 actual kernel |
 | `kernel8.img` | actual kernel，由 bootloader 載入並跳轉 |
 | `initramfs.cpio` | initial ramdisk archive |
 | `bcm2710-rpi-3-b-plus.dtb` | Raspberry Pi 3 device tree blob |
 
 待補 Makefile target：
 
-- [ ] build bootloader image。
+- [x] build bootloader image。
+- [x] root uploader target。
 - [ ] build kernel image。
 - [ ] build initramfs archive。
-- [ ] run QEMU with UART bootloader。
+- [x] run QEMU with UART bootloader。
 - [ ] run QEMU with `-initrd`。
 - [ ] run QEMU with `-dtb`。
 
@@ -316,9 +415,14 @@ Lab 2 會比 Lab 1 多出幾個 artifact：
 
 | 項目 | 指令 | 結果 |
 | --- | --- | --- |
-| Lab 2 initial build | `make` | 待補 |
-| UART bootloader in QEMU | 待補 | 待補 |
-| UART bootloader on Rpi3 | 待補 | 待補 |
+| Lab 2 initial build | `cd Lab2/c && make` | 通過 |
+| BootLoader build | `cd BootLoader && make` | 通過 |
+| KernelUploader syntax | `python3 -m py_compile KernelUploader.py` | 通過 |
+| Root uploader target dry-run | `make -n lab2` | 顯示會執行 `KernelUploader.py --kernel ./Lab2/c/bin/kernel8.img` |
+| KernelUploader with QEMU PTY | QEMU `-serial pty` + `python3 KernelUploader.py -y --port <pty> --kernel ./Lab2/c/bin/kernel8.img` | 上傳並送出 `boot` 成功 |
+| BootLoader shell help in QEMU | pipe `help` into QEMU stdio | 顯示 `(bootloader)$` prompt 與 `help/upload/boot` |
+| UART bootloader loads Lab2 kernel in QEMU | pipe `upload + KERN + size + Lab2/c/bin/kernel8.img + boot` into QEMU stdio | 跳轉後出現 Lab2 shell |
+| UART bootloader on Rpi3 | `make lab2` after booting `BootLoader/bin/kernel8.img` from SD card | 可上傳並進入 kernel shell |
 | Initramfs list/read | 待補 | 待補 |
 | Simple allocator | 待補 | 待補 |
 | Devicetree traversal | 待補 | 待補 |
