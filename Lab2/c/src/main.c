@@ -1,3 +1,4 @@
+#include "initramfs.h"
 #include "mini_uart.h"
 #include "printf.h"
 #include "shell.h"
@@ -16,6 +17,14 @@ void main(void)
     /* initialization */
     mini_uart_init();
     init_printf(NULL, printf_putc);
+
+    /*
+     * Lab 2 basic: QEMU loads initramfs to 0x8000000 by default.
+     * Later, the devicetree exercise will replace this hardcoded range with
+     * linux,initrd-start and linux,initrd-end from /chosen.
+     */
+    initramfs_use_default_range();
+
     /* enter simple shell */
     shell_run();
 }

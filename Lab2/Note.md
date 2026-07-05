@@ -45,7 +45,7 @@ actual kernel 仍希望放在 `0x80000` 執行；但 firmware 預設也會把第
 | 項目 | 主要任務 | 可能檔案 |
 | --- | --- | --- |
 | Self-relocating UART bootloader | 啟動後搬移 bootloader，透過 UART 接收 kernel image，寫入 `0x80000` 後跳轉 | `boot.S`, `main.c`, `mini_uart.*`, `linker.ld` |
-| Initial ramdisk | 建立 cpio archive，kernel 解析 newc 格式並讀取檔案內容 | `cpio.*`, `shell.c`, `makefile`, `rootfs/` |
+| Initial ramdisk | 建立 cpio archive，kernel 解析 newc 格式並讀取檔案內容 | `initramfs.*`, `shell.c`, `makefile`, `BootLoader/rootfs/` |
 | Simple allocator | 在 early boot 階段提供只配置、不釋放的連續記憶體配置器 | `allocator.*`, `linker.ld`, `config.h` |
 | Devicetree | 解析 FDT，遍歷 nodes/properties，從 dtb 取得 initramfs 位址 | `fdt.*`, `boot.S`, `main.c` |
 | Build and run | 分別建置 bootloader、kernel、initramfs，使用 QEMU 和實機驗證 | `makefile`, `config.txt` |
@@ -242,22 +242,35 @@ initramfs.cpio in memory -> cpio parser -> find pathname -> file content
 
 ### 建立 Cpio Archive
 
-Lab 2 使用 New ASCII Format Cpio，也就是 `newc` 格式。可先建立 `rootfs/`，放幾個純文字
-檔案測試：
+Lab 2 使用 New ASCII Format Cpio，也就是 `newc` 格式。rootfs 屬於共用 boot artifact，
+放在 `BootLoader/rootfs/`，後續 labs 可以沿用同一份內容：
 
 ```bash
-cd rootfs
-find . | cpio -o -H newc > ../initramfs.cpio
-cd ..
+cd BootLoader/rootfs
+find . | cpio -o -H newc > ../bin/initramfs.cpio
 ```
 
 QEMU 載入方式：
 
 ```bash
-qemu-system-aarch64 ... -initrd initramfs.cpio
+qemu-system-aarch64 ... -initrd ../../BootLoader/bin/initramfs.cpio
 ```
 
-spec 提到 QEMU 預設會將 cpio archive 載入 `0x8000000`。
+目前 `BootLoader/makefile` 負責從 `BootLoader/rootfs/` 產生
+`BootLoader/bin/initramfs.cpio`。`Lab2/c/makefile` 只引用這個共用 archive，不負責建置；
+執行 `make qemu` 前先在 `BootLoader` 執行 `make initramfs`。
+
+spec 提到 QEMU 預設會將 cpio archive 載入 `0x8000000`。第一版實作先把這個範圍寫在
+`Lab2/c/include/config.h`：
+
+```c
+#define CONFIG_INITRAMFS_BASE 0x08000000UL
+#define CONFIG_INITRAMFS_END  0x08200000UL
+```
+
+這是刻意保留的 basic path。後面做到 devicetree 時，會把這段 hardcoded range 改成從
+`/chosen` 的 `linux,initrd-start` 與 `linux,initrd-end` 取得；目前 `main.c` 已在
+`initramfs_use_default_range()` 旁留下這個替換點。
 
 Raspberry Pi 3 可在 boot partition 放入 archive，並於 `config.txt` 指定：
 
@@ -270,34 +283,52 @@ initramfs initramfs.cpio 0x20000000
 每個 entry 由 header、pathname、file content 組成。parser 需要逐筆前進，直到遇到
 `TRAILER!!!`。
 
-待補 parser 欄位：
+下表只列出目前 parser 直接使用的欄位，不是完整的 newc header。完整欄位格式可參考
+[FreeBSD cpio manual](https://man.freebsd.org/cgi/man.cgi?query=cpio&sektion=5)
+的 New ASCII Format 說明。
 
 | 欄位 | 用途 |
 | --- | --- |
 | `c_magic` | 應為 `070701` |
 | `c_namesize` | pathname 長度，包含結尾 `\0` |
 | `c_filesize` | file content 長度 |
-| pathname | entry 名稱，例如 `./hello.txt` |
+| pathname | entry 名稱，例如 `./squidward` |
 | content | file data |
 
-newc 的數值欄位是 ASCII hex；header、pathname、content 之間需要依格式做 alignment。
-實作時避免把可能未對齊的位址直接 cast 成 typed pointer，先用 byte-wise parsing 較安全。
+- newc 的數值欄位是 fixed-width ASCII hex。
+- header、pathname、content 之間需要依格式做 4-byte alignment。
+
+目前提供的 API：
+
+| API | 用途 |
+| --- | --- |
+| `initramfs_use_default_range()` | 使用 QEMU 預設 initramfs 位址範圍 |
+| `initramfs_set_range(begin, end)` | 之後給 dtb parser 設定 initramfs range |
+| `initramfs_next(&cursor, &file)` | 逐筆走訪 newc entries |
+| `initramfs_path_matches(query, name)` | 比對 `squidward` 與 `./squidward` 這類路徑 |
 
 ### Shell Integration
 
-建議加上幾個 command 方便驗證：
+目前加上兩個 command 方便驗證：
 
 | Command | Usage | 行為 |
 | --- | --- | --- |
 | `ls` | `ls` | 列出 initramfs 中的檔案 |
 | `cat` | `cat <path>` | 印出指定檔案內容 |
 
-待補：
+測試檔目前沿用舊版 initramfs demo，放在 `BootLoader/rootfs/anya`、
+`BootLoader/rootfs/fuck`、`BootLoader/rootfs/patrick`、`BootLoader/rootfs/squidward`。
+QEMU shell 中：
 
-- [ ] cpio parser API 設計。
-- [ ] pathname 正規化規則，例如是否接受 `hello.txt` 和 `./hello.txt`。
-- [ ] archive 結束條件與錯誤處理。
-- [ ] `ls` / `cat` command 的實作細節。
+```text
+$ ls
+squidward (2123 bytes)
+patrick (3774 bytes)
+fuck (2036 bytes)
+anya (4979 bytes)
+$ cat squidward
+...
+```
 
 ## Simple Allocator
 
@@ -396,17 +427,17 @@ Lab 2 會比 Lab 1 多出幾個 artifact：
 | --- | --- |
 | `BootLoader/bin/kernel8.img` | 由 firmware 載入，負責 UART 載入 actual kernel |
 | `kernel8.img` | actual kernel，由 bootloader 載入並跳轉 |
-| `initramfs.cpio` | initial ramdisk archive |
+| `BootLoader/bin/initramfs.cpio` | initial ramdisk archive |
 | `bcm2710-rpi-3-b-plus.dtb` | Raspberry Pi 3 device tree blob |
 
 待補 Makefile target：
 
 - [x] build bootloader image。
 - [x] root uploader target。
-- [ ] build kernel image。
-- [ ] build initramfs archive。
+- [x] build kernel image。
+- [x] build initramfs archive。
 - [x] run QEMU with UART bootloader。
-- [ ] run QEMU with `-initrd`。
+- [x] run QEMU with `-initrd`。
 - [ ] run QEMU with `-dtb`。
 
 ## 驗證紀錄
@@ -423,7 +454,8 @@ Lab 2 會比 Lab 1 多出幾個 artifact：
 | BootLoader shell help in QEMU | pipe `help` into QEMU stdio | 顯示 `(bootloader)$` prompt 與 `help/upload/boot` |
 | UART bootloader loads Lab2 kernel in QEMU | pipe `upload + KERN + size + Lab2/c/bin/kernel8.img + boot` into QEMU stdio | 跳轉後出現 Lab2 shell |
 | UART bootloader on Rpi3 | `make lab2` after booting `BootLoader/bin/kernel8.img` from SD card | 可上傳並進入 kernel shell |
-| Initramfs list/read | 待補 | 待補 |
+| Initramfs build | `cd BootLoader && make initramfs` | 通過 |
+| Initramfs list/read | `(sleep 1; printf 'ls\ncat squidward\n') \| timeout 8s make qemu` | 可列出並讀取舊版 demo 文字圖檔 |
 | Simple allocator | 待補 | 待補 |
 | Devicetree traversal | 待補 | 待補 |
 

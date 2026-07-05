@@ -3,6 +3,11 @@
 
 #include "types.h"
 
+static inline uintptr_t align_up(uintptr_t value, uintptr_t alignment)
+{
+    return (value + alignment - 1) & ~(alignment - 1);
+}
+
 /* Implemented in util.S. */
 void memzero(void *ptr, size_t size);
 uint32_t get32(uintptr_t addr);

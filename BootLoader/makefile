@@ -8,15 +8,17 @@ BUILD_DIR = build
 SRC_DIR = src
 INC_DIR = include
 BIN_DIR = bin
+ROOTFS_DIR = rootfs
+INITRAMFS = $(BIN_DIR)/initramfs.cpio
 
 CFLAGS = -Wall -Wextra -nostdlib -nostartfiles -ffreestanding -mgeneral-regs-only -I$(INC_DIR)
 ASMFLAGS = -I$(INC_DIR)
 LDFLAGS =
 DEBUG_FLAGS = -g
 
-.PHONY: all symbol-debug clean qemu debug-qemu gdb elf-header program-header
+.PHONY: all symbol-debug clean qemu debug-qemu gdb elf-header program-header initramfs
 
-all: $(BIN_DIR)/kernel8.img
+all: $(BIN_DIR)/kernel8.img $(INITRAMFS)
 
 symbol-debug:
 	@$(MAKE) -s clean
@@ -42,6 +44,12 @@ $(BIN_DIR)/kernel8.img: $(SRC_DIR)/linker.ld $(OBJ_FILES)
 	@mkdir -p $(@D)
 	$(LD) $(LDFLAGS) -T $(SRC_DIR)/linker.ld -o $(BUILD_DIR)/kernel8.elf $(OBJ_FILES) -Map=$(BUILD_DIR)/kernel8.map
 	$(OBJCOPY) $(BUILD_DIR)/kernel8.elf -O binary $@
+
+initramfs: $(INITRAMFS)
+
+$(INITRAMFS): $(shell find $(ROOTFS_DIR) -type f 2>/dev/null)
+	@mkdir -p $(@D)
+	cd $(ROOTFS_DIR) && find . | cpio -o -H newc > ../$@
 
 clean:
 	rm -rf $(BUILD_DIR) $(BIN_DIR)

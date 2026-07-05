@@ -2,6 +2,7 @@
 
 #include "config.h"
 #include "error.h"
+#include "initramfs.h"
 #include "mailbox.h"
 #include "mini_uart.h"
 #include "power.h"
@@ -39,6 +40,8 @@ static void cmd_help(size_t argc, char *argv[]);
 static void cmd_hello(size_t argc, char *argv[]);
 static void cmd_mailbox(size_t argc, char *argv[]);
 static void cmd_reboot(size_t argc, char *argv[]);
+static void cmd_ls(size_t argc, char *argv[]);
+static void cmd_cat(size_t argc, char *argv[]);
 
 /* Private data */
 static const command_t commands[] = {
@@ -46,6 +49,8 @@ static const command_t commands[] = {
     {"hello", "hello", "Print Hello World!", cmd_hello},
     {"mailbox", "mailbox [revision|memory]...", "Print all or selected hardware information", cmd_mailbox},
     {"reboot", "reboot", "Reboot the Raspberry Pi", cmd_reboot},
+    {"ls", "ls", "List files in the initramfs archive", cmd_ls},
+    {"cat", "cat <path>", "Print a file from the initramfs archive", cmd_cat},
 };
 
 static const char *const shell_error_messages[] = {
@@ -293,4 +298,63 @@ static void cmd_reboot(size_t argc, char *argv[])
 
     printf("Rebooting...\n");
     power_reboot();
+}
+
+static void cmd_ls(size_t argc, char *argv[])
+{
+    const uint8_t *cursor;
+    initramfs_file_t file;
+    initramfs_error_t error;
+
+    if (argc != 1) {
+        shell_print_usage(shell_find_command(argv[0]));
+        return;
+    }
+
+    cursor = initramfs_begin();
+    while ((error = initramfs_next(&cursor, &file)) == INITRAMFS_SUCCESS) {
+        if (strcmp(".", file.name) == 0) {
+            continue;
+        }
+
+        printf("%s (%u bytes)\n", file.name, (unsigned int) file.size);
+    }
+
+    if (error != INITRAMFS_END) {
+        printf("Initramfs error: %s\n", initramfs_error_string(error));
+    }
+}
+
+static void cmd_cat(size_t argc, char *argv[])
+{
+    const uint8_t *cursor;
+    initramfs_file_t file;
+    initramfs_error_t error;
+
+    if (argc != 2) {
+        shell_print_usage(shell_find_command(argv[0]));
+        return;
+    }
+
+    cursor = initramfs_begin();
+    while ((error = initramfs_next(&cursor, &file)) == INITRAMFS_SUCCESS) {
+        if (!initramfs_path_matches(argv[1], file.name)) {
+            continue;
+        }
+
+        for (size_t i = 0; i < file.size; i++) {
+            printf("%c", file.data[i]);
+        }
+        if (file.size == 0 || file.data[file.size - 1] != '\n') {
+            printf("\n");
+        }
+        return;
+    }
+
+    if (error != INITRAMFS_END) {
+        printf("Initramfs error: %s\n", initramfs_error_string(error));
+        return;
+    }
+
+    printf("File not found: %s\n", argv[1]);
 }

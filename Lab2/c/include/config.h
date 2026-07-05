@@ -28,6 +28,14 @@
 #error "CONFIG_MAILBOX_TIMEOUT must be at least 1"
 #endif
 
+/* initramfs.c */
+#define CONFIG_INITRAMFS_BASE 0x08000000UL
+#define CONFIG_INITRAMFS_END  0x08200000UL
+
+#if CONFIG_INITRAMFS_END <= CONFIG_INITRAMFS_BASE
+#error "CONFIG_INITRAMFS_END must be greater than CONFIG_INITRAMFS_BASE"
+#endif
+
 /* power.c */
 #define CONFIG_REBOOT_TICKS 100
 
