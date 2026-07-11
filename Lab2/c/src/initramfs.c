@@ -57,6 +57,39 @@ void initramfs_use_default_range(void)
     initramfs_set_range(CONFIG_INITRAMFS_BASE, CONFIG_INITRAMFS_END);
 }
 
+fdt_error_t initramfs_read_range_from_fdt(const fdt_t *fdt, uintptr_t *begin, uintptr_t *end)
+{
+    const uint8_t *value;
+    size_t size;
+    uintptr_t initrd_begin;
+    uintptr_t initrd_end;
+
+    if (fdt == NULL || begin == NULL || end == NULL) {
+        return FDT_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (fdt_get_property(fdt, "/chosen", "linux,initrd-start", &value, &size) !=
+            FDT_SUCCESS ||
+        size < sizeof(uint32_t)) {
+        return FDT_ERROR_NOT_FOUND;
+    }
+    initrd_begin = (uintptr_t) read_be32(value);
+
+    if (fdt_get_property(fdt, "/chosen", "linux,initrd-end", &value, &size) != FDT_SUCCESS ||
+        size < sizeof(uint32_t)) {
+        return FDT_ERROR_NOT_FOUND;
+    }
+    initrd_end = (uintptr_t) read_be32(value);
+
+    if (initrd_begin == 0 || initrd_end == 0 || initrd_end <= initrd_begin) {
+        return FDT_ERROR_NOT_FOUND;
+    }
+
+    *begin = initrd_begin;
+    *end = initrd_end;
+    return FDT_SUCCESS;
+}
+
 const char *initramfs_error_string(initramfs_error_t error)
 {
     if (error == INITRAMFS_END) {

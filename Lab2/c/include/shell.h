@@ -1,6 +1,8 @@
 #ifndef LAB2_C_SHELL_H
 #define LAB2_C_SHELL_H
 
-void shell_run(void);
+#include "fdt.h"
+
+void shell_run(const fdt_t *fdt);
 
 #endif

@@ -1,6 +1,7 @@
 #ifndef LAB2_C_INITRAMFS_H
 #define LAB2_C_INITRAMFS_H
 
+#include "fdt.h"
 #include "types.h"
 
 typedef enum {
@@ -21,6 +22,7 @@ typedef struct {
 
 void initramfs_set_range(uintptr_t begin, uintptr_t end);
 void initramfs_use_default_range(void);
+fdt_error_t initramfs_read_range_from_fdt(const fdt_t *fdt, uintptr_t *begin, uintptr_t *end);
 const char *initramfs_error_string(initramfs_error_t error);
 const uint8_t *initramfs_begin(void);
 initramfs_error_t initramfs_next(const uint8_t **cursor, initramfs_file_t *file);

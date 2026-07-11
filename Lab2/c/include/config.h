@@ -47,6 +47,13 @@
 #error "CONFIG_SIMPLE_ALLOCATOR_ALIGNMENT must be a power of two"
 #endif
 
+/* fdt.c */
+#define CONFIG_FDT_MAX_DEPTH 32
+
+#if CONFIG_FDT_MAX_DEPTH < 1
+#error "CONFIG_FDT_MAX_DEPTH must be at least 1"
+#endif
+
 /* power.c */
 #define CONFIG_REBOOT_TICKS 100
 

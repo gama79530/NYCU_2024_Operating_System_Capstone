@@ -47,7 +47,7 @@ actual kernel 仍希望放在 `0x80000` 執行；但 firmware 預設也會把第
 | Self-relocating UART bootloader | 啟動後搬移 bootloader，透過 UART 接收 kernel image，寫入 `0x80000` 後跳轉 | `boot.S`, `main.c`, `mini_uart.*`, `linker.ld` |
 | Initial ramdisk | 建立 cpio archive，kernel 解析 newc 格式並讀取檔案內容 | `initramfs.*`, `shell.c`, `makefile`, `BootLoader/rootfs/` |
 | Simple allocator | 在 early boot 階段提供只配置、不釋放的連續記憶體配置器 | `allocator.*`, `linker.ld`, `config.h` |
-| Devicetree | 解析 FDT，遍歷 nodes/properties，從 dtb 取得 initramfs 位址 | `fdt.*`, `boot.S`, `main.c` |
+| Devicetree | 解析 FDT，查詢指定 node/property，從 dtb 取得 initramfs 位址 | `fdt.*`, `boot.S`, `main.c` |
 | Build and run | 分別建置 bootloader、kernel、initramfs，使用 QEMU 和實機驗證 | `makefile`, `config.txt` |
 
 建議實作順序：
@@ -100,10 +100,11 @@ qemu-system-aarch64 -M raspi3b -display none -serial null -serial stdio \
 
 ### Self Relocation
 
-bootloader 一開始可以被載入到 `0x80000`。為了稍後把 actual kernel image 寫回
-`0x80000`，bootloader 必須先把自己搬到安全位置，並跳到 relocated code 繼續執行。
+Raspberry Pi firmware/QEMU 會先把 bootloader raw image 載入 `0x80000`，但 actual kernel
+也要放在 `0x80000` 執行。bootloader 因此在 early boot 階段先把自己搬到 `0x60000`，
+再從 relocated code 繼續執行，讓 `0x80000` 可以安全覆寫成 actual kernel image。
 
-第一版設計先保持固定 memory map：
+目前使用固定 memory map：
 
 | 項目 | 位址 |
 | --- | --- |
@@ -111,21 +112,13 @@ bootloader 一開始可以被載入到 `0x80000`。為了稍後把 actual kernel
 | Relocated bootloader address | `0x60000` |
 | Actual kernel load address | `0x80000` |
 
-實作時需要特別釐清：
-
-- bootloader image 的起訖 linker symbols。
-- relocation destination 是否會和 stack、kernel、initramfs、dtb 重疊。
-- copy range 要包含繼續執行所需的 `.text`、`.rodata`、`.data`，並處理 `.bss` 狀態。
-- copy 完成後如何跳到 relocated code 的對應位置。
-- relocation 前後 absolute address、literal pool、global data 是否仍正確。
-- 開始寫 `0x80000` 前，bootloader 必須已經不依賴原位置內容。
-
 目前 bootloader 獨立放在 repo 根目錄的 `BootLoader/`，不是放在單一 lab 裡。這樣後續
 Lab 3 之後仍可沿用同一個 UART loader，只要各 lab 產出自己的 actual kernel image。
-`BootLoader/src/linker.ld` 將 bootloader link 在 `0x60000`，但 firmware/QEMU 仍會把
-raw image 載到 `0x80000`。`BootLoader/src/boot.S` 早期會把整個 bootloader 從
-`0x80000` copy 到 `0x60000`，清 relocated `.bss`，設定 stack，最後跳到 relocated
-`bootloader_main`。
+`BootLoader/src/linker.ld` 將 bootloader link 在 `0x60000`；`BootLoader/src/boot.S`
+在原始載入位置執行最小 relocation stub，把 linker symbols 指定的 bootloader image range
+從 `0x80000` copy 到 `0x60000`，清 relocated `.bss`，設定 stack，最後跳到 relocated
+`bootloader_main`。完成 relocation 後，bootloader 的 shell、UART upload、global data 都在
+relocated address range 中運作，因此可以把 actual kernel 寫回 `0x80000`。
 
 ### UART Transfer Protocol
 
@@ -260,7 +253,7 @@ qemu-system-aarch64 ... -initrd ../../BootLoader/bin/initramfs.cpio
 `BootLoader/bin/initramfs.cpio`。`Lab2/c/makefile` 只引用這個共用 archive，不負責建置；
 執行 `make qemu` 前先在 `BootLoader` 執行 `make initramfs`。
 
-spec 提到 QEMU 預設會將 cpio archive 載入 `0x8000000`。第一版實作先把這個範圍寫在
+spec 提到 QEMU 預設會將 cpio archive 載入 `0x8000000`。這個 fallback range 寫在
 `Lab2/c/include/config.h`：
 
 ```c
@@ -268,9 +261,8 @@ spec 提到 QEMU 預設會將 cpio archive 載入 `0x8000000`。第一版實作�
 #define CONFIG_INITRAMFS_END  0x08200000UL
 ```
 
-這是刻意保留的 basic path。後面做到 devicetree 時，會把這段 hardcoded range 改成從
-`/chosen` 的 `linux,initrd-start` 與 `linux,initrd-end` 取得；目前 `main.c` 已在
-`initramfs_use_default_range()` 旁留下這個替換點。
+kernel 啟動時會先使用這組 fallback range；若 DTB 可用，`main.c` 會改用 `/chosen` 的
+`linux,initrd-start` 與 `linux,initrd-end` 覆蓋 initramfs range。
 
 Raspberry Pi 3 可在 boot partition 放入 archive，並於 `config.txt` 指定：
 
@@ -396,61 +388,113 @@ heap remaining: 1048560 bytes
 
 ## Devicetree
 
-Advanced exercise 2 要解析 flattened devicetree，也就是 dtb。目標是提供一個可遍歷
-device tree 的 API，讓 driver 或 subsystem 能用 callback 檢查每個 node 與 property。
-最後要用這個 API 取得 initramfs 的位址，而不是 hardcode。
+Advanced exercise 2 要解析 flattened devicetree，也就是 dtb。kernel 透過 FDT query API
+讀取指定 node/property；需要 DTB 設定值的 module 只需要知道 path、property name，以及
+property value 的格式。
 
 ```text
-x0 = dtb address -> fdt parser -> traverse nodes/properties -> find initrd range
+x0 = dtb address -> fdt parser -> property query -> module state
 ```
 
 ### Dtb Loading
 
-QEMU 可指定 dtb：
+QEMU 可指定 initramfs 與 dtb：
 
 ```bash
-qemu-system-aarch64 ... -dtb bcm2710-rpi-3-b-plus.dtb
+make qemu
+make qemu INITRAMFS=/path/to/other.cpio
+make qemu DTB=/path/to/other.dtb
 ```
 
 Raspberry Pi 3 則把 dtb 放在 SD card boot partition，由 firmware 載入並把 dtb 位址放在
 `x0` 傳給 kernel。若使用自己的 bootloader，bootloader 也要把這個位址傳給 actual kernel。
+`Lab2/c/makefile` 預設使用 `BootLoader/bin/initramfs.cpio` 與
+`BootLoader/bin/bcm2710-rpi-3-b.dtb`，也可用 `INITRAMFS=...` 或 `DTB=...` 覆蓋。
+`BootLoader` 會保存 firmware 傳入的 `x0`，並在跳轉 actual kernel 時繼續放在 `x0`。
 
 ### FDT Parser
 
-待補的 parser 重點：
+`Lab2/c/src/fdt.c` 會處理：
 
 | 區塊 | 內容 |
 | --- | --- |
-| Header | magic、totalsize、structure block offset、strings block offset |
-| Structure block | begin node、end node、property、nop、end tokens |
+| Header | 驗證 magic，讀取 totalsize、structure block offset、strings block offset |
+| Structure block | 解析 begin node、end node、property、nop、end tokens |
 | Strings block | property name 字串表 |
-| Memory reservation block | 保留記憶體區域 |
+| Memory reservation block | 保留記憶體區域，本 lab 不需要使用 |
 
-遍歷 API 可以先設計成 callback 形式：
+實作時要注意 dtb 使用 big-endian binary 欄位，不能直接用 host/native endian 解讀。
+parser 使用 `read_be32()` 讀取 32-bit big-endian 欄位。
+
+### FDT API
+
+`fdt.c` 只負責提供通用 parser 與 DTB query interface。API 形狀參考 libfdt 的使用方式，
+但目前實作仍然用最簡單的 traversal 掃描完成查詢。
+
+| API | 用途 |
+| --- | --- |
+| `fdt_init(&fdt, address)` | 驗證 header 並初始化 parser context |
+| `fdt_get_property(&fdt, path, name, &value, &size)` | 依 node path 與 property name 取得 property value |
+
+`fdt_get_property()` 目前的內部實作會走訪 structure block，依 node path 與 property name
+比對目標 property。這個 traversal 是 `fdt.c` 的 private implementation detail，外部 module
+不需要知道 callback 格式。
+
+### FDT Property Lookup
+
+以這個查詢為例：
 
 ```c
-void fdt_traverse(void (*callback)(...));
+fdt_get_property(&fdt, "/chosen", "linux,initrd-start", &value, &size);
 ```
 
-實作時要注意 dtb 使用 big-endian 欄位，不能直接用 host/native endian 解讀。
+`fdt_get_property()` 會建立 private lookup state，記錄 query path、property name、找到後
+要回傳的 value/size，以及 `path_matches[]`。接著內部從 structure block 開頭 traversal：
+
+- 遇到 `FDT_BEGIN_NODE` 時，更新目前 depth 的 path matching 狀態。
+- 遇到 `FDT_PROP` 時，只有在目前 node path 完整符合 query path，且 property name 相同時，
+  才把 property value/size 記入 lookup state。
+- 遇到 `FDT_END_NODE` 時，清掉該 depth 的 path matching 狀態。
+
+DTB 的 root node 本身是一個 nameless node，因此目前 depth 定義如下：
+
+```text
+path "/"          -> depth 0, node_name = ""
+path "/chosen"    -> depth 1, node_name = "chosen"
+path "/aaa/bbb"   -> depth 1 是 "aaa"，depth 2 是 "bbb"
+```
+
+`fdt_path_component_matches(path, depth, node_name)` 會從 query path 取出對應 depth 的 component
+並與目前 node name 比對。`fdt_path_ends_at_depth(path, depth)` 則確認 query path 是否剛好
+停在目前 depth，避免把 `/soc` 誤當成 `/soc/uart@...` 的完整 match。
+
+`fdt_get_property()` 找到 property 後會 early stop。這個停止訊號是 `fdt.c` private
+control flow，不會出現在 public `fdt_error_t` API；對外仍只回傳 `FDT_SUCCESS` 或既有的
+`FDT_ERROR_*`。若 traversal 遇到真正的 parse error，錯誤仍會原樣傳回；若掃描結束仍找不到
+目標 property，則回傳 `FDT_ERROR_NOT_FOUND`。
+
+使用 DTB 設定值的固定流程：
+
+- 在 `boot.S` 保留 firmware 或 bootloader 傳入的 `x0`，並傳給 `main()`。
+- 在 `main.c` 建立 `fdt_t`，呼叫 `fdt_init(&fdt, dtb_addr)`。
+- 需要 DTB 資訊的 module 接收 `const fdt_t *`。
+- module 呼叫 `fdt_get_property()` 取得指定 path/property 的 value。
+- module 自己負責解讀 property value 的格式與 endian。
 
 ### Initramfs From Dtb
 
-最後要從 devicetree 找出 initramfs 的範圍。待確認的 property 名稱通常會和 chosen node
-有關：
+QEMU 或 firmware 會把 initramfs 範圍放在 `/chosen`：
 
-| Property | 可能用途 |
+| Property | 用途 |
 | --- | --- |
 | `linux,initrd-start` | initramfs 起始位址 |
 | `linux,initrd-end` | initramfs 結束位址 |
 
-待補：
-
-- [ ] FDT header validation。
-- [ ] structure block token parser。
-- [ ] callback API 的參數格式。
-- [ ] 讀取 `/chosen` 裡 initramfs 位址。
-- [ ] bootloader 傳遞 dtb address 到 kernel 的 register contract。
+`initramfs.c` 透過 `initramfs_read_range_from_fdt(&fdt, &begin, &end)` 呼叫
+`fdt_get_property()` 讀出 `/chosen` 的 initrd properties。`main.c` 先把 initramfs range
+設為 fallback，若 DTB 查詢成功再覆蓋成 DTB 中的 range，最後統一呼叫
+`initramfs_set_range(begin, end)`。若沒有有效 DTB，則使用
+`CONFIG_INITRAMFS_BASE` / `CONFIG_INITRAMFS_END` 作為 QEMU fallback。
 
 ## Build and Run
 
@@ -461,37 +505,7 @@ Lab 2 會比 Lab 1 多出幾個 artifact：
 | `BootLoader/bin/kernel8.img` | 由 firmware 載入，負責 UART 載入 actual kernel |
 | `kernel8.img` | actual kernel，由 bootloader 載入並跳轉 |
 | `BootLoader/bin/initramfs.cpio` | initial ramdisk archive |
-| `bcm2710-rpi-3-b-plus.dtb` | Raspberry Pi 3 device tree blob |
-
-待補 Makefile target：
-
-- [x] build bootloader image。
-- [x] root uploader target。
-- [x] build kernel image。
-- [x] build initramfs archive。
-- [x] run QEMU with UART bootloader。
-- [x] run QEMU with `-initrd`。
-- [ ] run QEMU with `-dtb`。
-
-## 驗證紀錄
-
-後續每完成一小段，將實際指令與結果記錄在這裡。
-
-| 項目 | 指令 | 結果 |
-| --- | --- | --- |
-| Lab 2 initial build | `cd Lab2/c && make` | 通過 |
-| BootLoader build | `cd BootLoader && make` | 通過 |
-| KernelUploader syntax | `python3 -m py_compile KernelUploader.py` | 通過 |
-| Root uploader target dry-run | `make -n lab2` | 顯示會執行 `KernelUploader.py --kernel ./Lab2/c/bin/kernel8.img` |
-| KernelUploader with QEMU PTY | QEMU `-serial pty` + `python3 KernelUploader.py -y --port <pty> --kernel ./Lab2/c/bin/kernel8.img` | 上傳並送出 `boot` 成功 |
-| BootLoader shell help in QEMU | pipe `help` into QEMU stdio | 顯示 `(bootloader)$` prompt 與 `help/upload/boot` |
-| UART bootloader loads Lab2 kernel in QEMU | pipe `upload + KERN + size + Lab2/c/bin/kernel8.img + boot` into QEMU stdio | 跳轉後出現 Lab2 shell |
-| UART bootloader on Rpi3 | `make lab2` after booting `BootLoader/bin/kernel8.img` from SD card | 可上傳並進入 kernel shell |
-| Initramfs build | `cd BootLoader && make initramfs` | 通過 |
-| Initramfs list/read | `(sleep 1; printf 'ls\ncat squidward\n') \| timeout 8s make qemu` | 可列出並讀取舊版 demo 文字圖檔 |
-| Simple allocator build | `cd Lab2/c && make clean && make` | 通過 |
-| Simple allocator shell test | `(sleep 1; printf 'heap\nalloc 13\nheap\nalloc 0\nalloc 1048576\n') \| timeout 8s make qemu` | 13 bytes 配置後 bump pointer 8-byte 對齊前進，0 bytes 與 OOM 失敗 |
-| Devicetree traversal | 待補 | 待補 |
+| `BootLoader/bin/bcm2710-rpi-3-b.dtb` | Raspberry Pi 3 device tree blob |
 
 ## 參考資料
 

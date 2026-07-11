@@ -10,6 +10,7 @@ INC_DIR = include
 BIN_DIR = bin
 BOOTLOADER_DIR = ../../BootLoader
 INITRAMFS ?= $(BOOTLOADER_DIR)/bin/initramfs.cpio
+DTB ?= $(BOOTLOADER_DIR)/bin/bcm2710-rpi-3-b.dtb
 
 CFLAGS = -Wall -nostdlib -nostartfiles -ffreestanding -mgeneral-regs-only -I$(INC_DIR)
 ASMFLAGS = -I$(INC_DIR)
@@ -57,9 +58,10 @@ run:
 
 QEMU ?= qemu-system-aarch64
 QEMU_INITRAMFS = -initrd $(INITRAMFS)
-QEMU_FLAGS_QEMU = -M raspi3b -kernel $(BIN_DIR)/kernel8.img -display none -serial null -serial stdio $(QEMU_INITRAMFS)
-QEMU_FLAGS_QEMU_ASM = -M raspi3b -kernel $(BIN_DIR)/kernel8.img -display none -d in_asm $(QEMU_INITRAMFS)
-QEMU_FLAGS_DEBUG_QEMU = -M raspi3b -kernel $(BIN_DIR)/kernel8.img -serial null -serial stdio -display none -S -s $(QEMU_INITRAMFS)
+QEMU_DTB = -dtb $(DTB)
+QEMU_FLAGS_QEMU = -M raspi3b -kernel $(BIN_DIR)/kernel8.img -display none -serial null -serial stdio $(QEMU_INITRAMFS) $(QEMU_DTB)
+QEMU_FLAGS_QEMU_ASM = -M raspi3b -kernel $(BIN_DIR)/kernel8.img -display none -d in_asm $(QEMU_INITRAMFS) $(QEMU_DTB)
+QEMU_FLAGS_DEBUG_QEMU = -M raspi3b -kernel $(BIN_DIR)/kernel8.img -serial null -serial stdio -display none -S -s $(QEMU_INITRAMFS) $(QEMU_DTB)
 
 qemu: $(BIN_DIR)/kernel8.img
 	@$(QEMU) $(QEMU_FLAGS_QEMU)

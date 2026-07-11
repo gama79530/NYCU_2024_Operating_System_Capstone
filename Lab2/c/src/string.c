@@ -33,6 +33,17 @@ int strncmp(const char *lhs, const char *rhs, size_t count)
     return (unsigned char) *lhs - (unsigned char) *rhs;
 }
 
+size_t strlen(const char *str)
+{
+    size_t length = 0;
+
+    while (str[length] != '\0') {
+        length++;
+    }
+
+    return length;
+}
+
 bool strntoul(const char *str, size_t count, unsigned int base, unsigned long *value)
 {
     unsigned long result = 0;

@@ -1,4 +1,6 @@
 #include "allocator.h"
+#include "config.h"
+#include "fdt.h"
 #include "initramfs.h"
 #include "mini_uart.h"
 #include "printf.h"
@@ -11,24 +13,34 @@
 static void printf_putc(void *context, char c);
 
 /* Private data */
+static fdt_t boot_fdt;
 
 /* Function implementations */
-void main(void)
+void main(uint64_t dtb_addr)
 {
+    fdt_error_t fdt_error;
+    uintptr_t initramfs_begin = CONFIG_INITRAMFS_BASE;
+    uintptr_t initramfs_end = CONFIG_INITRAMFS_END;
+
     /* initialization */
     mini_uart_init();
     init_printf(NULL, printf_putc);
     simple_allocator_init();
 
     /*
-     * Lab 2 basic: QEMU loads initramfs to 0x8000000 by default.
-     * Later, the devicetree exercise will replace this hardcoded range with
-     * linux,initrd-start and linux,initrd-end from /chosen.
+     * Lab 2 basic used QEMU's default initramfs range directly. The DTB path
+     * below replaces that range with /chosen linux,initrd-start/end when the
+     * firmware or bootloader provides a valid devicetree address.
      */
-    initramfs_use_default_range();
+    fdt_error = fdt_init(&boot_fdt, (uintptr_t) dtb_addr);
+    if (fdt_error == FDT_SUCCESS) {
+        initramfs_read_range_from_fdt(&boot_fdt, &initramfs_begin, &initramfs_end);
+    }
+
+    initramfs_set_range(initramfs_begin, initramfs_end);
 
     /* enter simple shell */
-    shell_run();
+    shell_run(fdt_error == FDT_SUCCESS ? &boot_fdt : NULL);
 }
 
 static void printf_putc(void *context, char c)

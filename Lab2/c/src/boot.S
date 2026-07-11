@@ -11,6 +11,9 @@
 .global _start
 .type _start, %function
 _start:
+    // Keep the firmware or bootloader-provided DTB pointer for C code.
+    mov     x19, x0
+
     // Only core 0 enters the kernel.
     mrs     x0, mpidr_el1
     and     x0, x0, #0xff
@@ -26,6 +29,7 @@ _start:
     bl      memzero
 
     // Enter the C kernel.
+    mov     x0, x19
     bl      main
 
 hang:

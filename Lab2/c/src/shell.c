@@ -3,6 +3,7 @@
 #include "allocator.h"
 #include "config.h"
 #include "error.h"
+#include "fdt.h"
 #include "initramfs.h"
 #include "mailbox.h"
 #include "mini_uart.h"
@@ -46,8 +47,11 @@ static void cmd_ls(size_t argc, char *argv[]);
 static void cmd_cat(size_t argc, char *argv[]);
 static void cmd_heap(size_t argc, char *argv[]);
 static void cmd_alloc(size_t argc, char *argv[]);
+static void cmd_dtb(size_t argc, char *argv[]);
 
 /* Private data */
+static const fdt_t *shell_fdt;
+
 static const command_t commands[] = {
     {"help", "help [command]", "List commands or show help for one command", cmd_help},
     {"hello", "hello", "Print Hello World!", cmd_hello},
@@ -57,6 +61,7 @@ static const command_t commands[] = {
     {"cat", "cat <path>", "Print a file from the initramfs archive", cmd_cat},
     {"heap", "heap", "Print simple allocator state", cmd_heap},
     {"alloc", "alloc <bytes>", "Allocate bytes from the simple allocator", cmd_alloc},
+    {"dtb", "dtb", "Print devicetree initramfs information", cmd_dtb},
 };
 
 static const char *const shell_error_messages[] = {
@@ -68,11 +73,12 @@ static const char *const shell_error_messages[] = {
 #define SHELL_ERROR_COUNT (sizeof(shell_error_messages) / sizeof(shell_error_messages[0]))
 
 /* Function implementations */
-void shell_run(void)
+void shell_run(const fdt_t *fdt)
 {
     char buffer[CONFIG_SHELL_BUFFER_SIZE];
     char *argv[CONFIG_SHELL_MAX_ARGS];
 
+    shell_fdt = fdt;
     printf("Simple shell ready. Type \"help\" for available commands.\n");
 
     while (true) {
@@ -417,4 +423,32 @@ static void cmd_alloc(size_t argc, char *argv[])
     }
 
     printf("Allocated %u bytes at 0x%08X\n", (unsigned int) size, (unsigned int) (uintptr_t) ptr);
+}
+
+static void cmd_dtb(size_t argc, char *argv[])
+{
+    fdt_error_t error;
+    uintptr_t initramfs_begin;
+    uintptr_t initramfs_end;
+
+    if (argc != 1) {
+        shell_print_usage(shell_find_command(argv[0]));
+        return;
+    }
+
+    if (shell_fdt == NULL) {
+        printf("FDT error : %s\n", fdt_error_string(FDT_ERROR_INVALID_ARGUMENT));
+        return;
+    }
+
+    printf("dtb address: 0x%08X\n", (unsigned int) (uintptr_t) shell_fdt->base);
+
+    error = initramfs_read_range_from_fdt(shell_fdt, &initramfs_begin, &initramfs_end);
+    if (error != FDT_SUCCESS) {
+        printf("initramfs : %s\n", fdt_error_string(error));
+        return;
+    }
+
+    printf("initrd start: 0x%08X\n", (unsigned int) initramfs_begin);
+    printf("initrd end  : 0x%08X\n", (unsigned int) initramfs_end);
 }
