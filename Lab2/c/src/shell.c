@@ -1,5 +1,6 @@
 #include "shell.h"
 
+#include "allocator.h"
 #include "config.h"
 #include "error.h"
 #include "initramfs.h"
@@ -31,6 +32,7 @@ static const char *shell_error_string(shell_error_t error);
 static void shell_print_error(shell_error_t error);
 static shell_error_t shell_read_line(char *buffer, size_t capacity);
 static shell_error_t shell_parse_args(char *line, char *argv[], size_t capacity, size_t *argc);
+static bool shell_parse_size(const char *str, size_t *value);
 static const command_t *shell_find_command(const char *name);
 static void shell_print_usage(const command_t *command);
 static void shell_dispatch(size_t argc, char *argv[]);
@@ -42,6 +44,8 @@ static void cmd_mailbox(size_t argc, char *argv[]);
 static void cmd_reboot(size_t argc, char *argv[]);
 static void cmd_ls(size_t argc, char *argv[]);
 static void cmd_cat(size_t argc, char *argv[]);
+static void cmd_heap(size_t argc, char *argv[]);
+static void cmd_alloc(size_t argc, char *argv[]);
 
 /* Private data */
 static const command_t commands[] = {
@@ -51,6 +55,8 @@ static const command_t commands[] = {
     {"reboot", "reboot", "Reboot the Raspberry Pi", cmd_reboot},
     {"ls", "ls", "List files in the initramfs archive", cmd_ls},
     {"cat", "cat <path>", "Print a file from the initramfs archive", cmd_cat},
+    {"heap", "heap", "Print simple allocator state", cmd_heap},
+    {"alloc", "alloc <bytes>", "Allocate bytes from the simple allocator", cmd_alloc},
 };
 
 static const char *const shell_error_messages[] = {
@@ -180,6 +186,23 @@ static shell_error_t shell_parse_args(char *line, char *argv[], size_t capacity,
     }
 
     return SHELL_SUCCESS;
+}
+
+static bool shell_parse_size(const char *str, size_t *value)
+{
+    size_t length = 0;
+    unsigned long parsed;
+
+    while (str[length] != '\0') {
+        length++;
+    }
+
+    if (length == 0 || !strntoul(str, length, 10, &parsed)) {
+        return false;
+    }
+
+    *value = (size_t) parsed;
+    return true;
 }
 
 static const command_t *shell_find_command(const char *name)
@@ -357,4 +380,41 @@ static void cmd_cat(size_t argc, char *argv[])
     }
 
     printf("File not found: %s\n", argv[1]);
+}
+
+static void cmd_heap(size_t argc, char *argv[])
+{
+    if (argc != 1) {
+        shell_print_usage(shell_find_command(argv[0]));
+        return;
+    }
+
+    printf("heap begin    : 0x%08X\n", (unsigned int) simple_allocator_begin());
+    printf("heap current  : 0x%08X\n", (unsigned int) simple_allocator_current());
+    printf("heap end      : 0x%08X\n", (unsigned int) simple_allocator_end());
+    printf("heap remaining: %u bytes\n", (unsigned int) simple_allocator_remaining());
+}
+
+static void cmd_alloc(size_t argc, char *argv[])
+{
+    size_t size;
+    void *ptr;
+
+    if (argc != 2) {
+        shell_print_usage(shell_find_command(argv[0]));
+        return;
+    }
+
+    if (!shell_parse_size(argv[1], &size)) {
+        printf("Invalid size: %s\n", argv[1]);
+        return;
+    }
+
+    ptr = simple_malloc(size);
+    if (ptr == NULL) {
+        printf("Allocation failed: %u bytes\n", (unsigned int) size);
+        return;
+    }
+
+    printf("Allocated %u bytes at 0x%08X\n", (unsigned int) size, (unsigned int) (uintptr_t) ptr);
 }

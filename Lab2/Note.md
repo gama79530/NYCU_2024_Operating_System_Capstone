@@ -333,33 +333,66 @@ $ cat squidward
 ## Simple Allocator
 
 Basic exercise 3 要實作 early boot 階段使用的 simple allocator。它只需要提供連續空間，
-不需要支援 `free`。
+不需要支援 `free`。目前實作採用 bump allocator，放在 `Lab2/c/src/allocator.c`。
 
 ```c
 void *simple_malloc(size_t size);
 ```
 
-建議使用 bump allocator：
+allocator 只維護一個目前位置：
 
 ```text
 heap_begin -> current bump pointer -> heap_end
 ```
 
-需要決定的設計點：
+目前 heap range 由 linker symbols 決定：
+
+| Symbol | 用途 |
+| --- | --- |
+| `simple_heap_begin` | `kernel_end` 後方對齊的位置 |
+| `simple_heap_end` | `simple_heap_begin + 0x100000`，也就是 1 MB startup heap |
+
+主要 API：
+
+| API | 用途 |
+| --- | --- |
+| `simple_allocator_init()` | 初始化 bump pointer |
+| `simple_malloc(size)` | 配置 `size` bytes，失敗回傳 `NULL` |
+| `simple_allocator_begin()` | 回傳 heap 起點 |
+| `simple_allocator_current()` | 回傳目前 bump pointer |
+| `simple_allocator_end()` | 回傳 heap 終點 |
+| `simple_allocator_remaining()` | 回傳剩餘 bytes |
+
+設計點：
 
 | 設計點 | 說明 |
 | --- | --- |
-| Heap 起點 | 可由 linker symbol 或固定安全位址提供 |
-| Heap 終點 | 避免覆蓋 kernel、stack、initramfs、dtb |
-| Alignment | kernel data 預設以 8-byte alignment 處理 |
-| OOM 行為 | 回傳 `NULL` 或直接 panic/hang |
+| Heap 起點 | 由 linker symbol `simple_heap_begin` 提供 |
+| Heap 終點 | 由 linker symbol `simple_heap_end` 提供，避免直接在 C code 寫死 |
+| Alignment | `CONFIG_SIMPLE_ALLOCATOR_ALIGNMENT`，目前是 8-byte alignment |
+| OOM 行為 | 回傳 `NULL`，由 caller 決定如何處理 |
 
-待補：
+QEMU shell 也提供兩個 command 方便驗證：
 
-- [ ] linker symbols 或 config 常數。
-- [ ] `simple_malloc` 的 alignment 規則。
-- [ ] 使用 allocator 的第一個 call site。
-- [ ] OOM 的錯誤訊息與測試方式。
+| Command | Usage | 行為 |
+| --- | --- | --- |
+| `heap` | `heap` | 顯示 simple allocator 狀態 |
+| `alloc` | `alloc <bytes>` | 從 simple allocator 配置指定 bytes |
+
+例如配置 13 bytes 時，因為 8-byte alignment，bump pointer 會實際前進 16 bytes：
+
+```text
+$ heap
+heap begin    : 0x00082FF0
+heap current  : 0x00082FF0
+heap end      : 0x00182FF0
+heap remaining: 1048576 bytes
+$ alloc 13
+Allocated 13 bytes at 0x00082FF0
+$ heap
+heap current  : 0x00083000
+heap remaining: 1048560 bytes
+```
 
 ## Devicetree
 
@@ -456,7 +489,8 @@ Lab 2 會比 Lab 1 多出幾個 artifact：
 | UART bootloader on Rpi3 | `make lab2` after booting `BootLoader/bin/kernel8.img` from SD card | 可上傳並進入 kernel shell |
 | Initramfs build | `cd BootLoader && make initramfs` | 通過 |
 | Initramfs list/read | `(sleep 1; printf 'ls\ncat squidward\n') \| timeout 8s make qemu` | 可列出並讀取舊版 demo 文字圖檔 |
-| Simple allocator | 待補 | 待補 |
+| Simple allocator build | `cd Lab2/c && make clean && make` | 通過 |
+| Simple allocator shell test | `(sleep 1; printf 'heap\nalloc 13\nheap\nalloc 0\nalloc 1048576\n') \| timeout 8s make qemu` | 13 bytes 配置後 bump pointer 8-byte 對齊前進，0 bytes 與 OOM 失敗 |
 | Devicetree traversal | 待補 | 待補 |
 
 ## 參考資料

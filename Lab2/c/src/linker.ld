@@ -36,3 +36,5 @@ SECTIONS
 
 PROVIDE(bss_size = bss_end - bss_begin);
 PROVIDE(kernel_size = kernel_end - kernel_begin);
+PROVIDE(simple_heap_begin = ALIGN(kernel_end, 0x10));
+PROVIDE(simple_heap_end = simple_heap_begin + 0x100000);

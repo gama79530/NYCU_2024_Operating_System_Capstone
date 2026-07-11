@@ -1,3 +1,4 @@
+#include "allocator.h"
 #include "initramfs.h"
 #include "mini_uart.h"
 #include "printf.h"
@@ -17,6 +18,7 @@ void main(void)
     /* initialization */
     mini_uart_init();
     init_printf(NULL, printf_putc);
+    simple_allocator_init();
 
     /*
      * Lab 2 basic: QEMU loads initramfs to 0x8000000 by default.

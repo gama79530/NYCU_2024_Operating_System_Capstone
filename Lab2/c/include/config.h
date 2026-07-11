@@ -36,6 +36,17 @@
 #error "CONFIG_INITRAMFS_END must be greater than CONFIG_INITRAMFS_BASE"
 #endif
 
+/* allocator.c */
+#define CONFIG_SIMPLE_ALLOCATOR_ALIGNMENT 8
+
+#if CONFIG_SIMPLE_ALLOCATOR_ALIGNMENT < 1
+#error "CONFIG_SIMPLE_ALLOCATOR_ALIGNMENT must be at least 1"
+#endif
+
+#if (CONFIG_SIMPLE_ALLOCATOR_ALIGNMENT & (CONFIG_SIMPLE_ALLOCATOR_ALIGNMENT - 1)) != 0
+#error "CONFIG_SIMPLE_ALLOCATOR_ALIGNMENT must be a power of two"
+#endif
+
 /* power.c */
 #define CONFIG_REBOOT_TICKS 100
 
