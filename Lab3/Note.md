@@ -27,12 +27,12 @@ EL2 -> EL1 kernel
 | EL setup | 從 EL2 切到 EL1h，讓 kernel 在 OS privilege 下執行 | `boot.S`, `arm_v8.h` |
 | Vector table | 建立 0x800-aligned EL1 vector table，設定 `VBAR_EL1` | `exception.S`, `boot.S` |
 | Exception frame | 在 assembly stub 保存/還原 `x0-x30`、`SPSR_EL1`、`ELR_EL1` | `exception.S`, `exception.h` |
-| Dispatcher | C handler 讀 `ESR_EL1` 和 interrupt pending registers，判斷事件來源 | `exception.c`, `peripheral.h` |
+| Dispatcher | C dispatcher 讀 `ESR_EL1` 和 interrupt pending registers，判斷事件來源 | `exception.c`, `peripheral.h` |
+| Task queue | 提供 interrupt handler 延後執行工作的 priority queue，讓 IRQ path 維持短小 | `task_queue.*`, `exception.c` |
 | User program artifact | 建置 spec 提供的 EL0 測試程式，產生可放進 initramfs 的 `user.img` | `Lab3/user/` |
 | EL0 SVC demo | 從 initramfs 載入 `user.img`，切到 EL0，處理 user program 的 `svc` | `shell.c`, `exception.*` |
 | Core timer IRQ | 啟用 physical timer，將 timer IRQ 接到同一個 dispatcher | `timer.*`, `exception.c` |
 | UART IRQ | 啟用 Mini UART RX/TX IRQ，改用 buffer 做 async I/O | `mini_uart.*`, `exception.c` |
-| Task queue | interrupt handler 只排 task，task 以可 nested 的方式延後處理 | `task_queue.*`, `exception.c` |
 | Timer queue | 用 one-shot core timer multiplex 多個 software timer | `timer.*`, `shell.c` |
 
 建議實作順序：
@@ -40,12 +40,12 @@ EL2 -> EL1 kernel
 1. 從 Lab 2 複製 kernel，確認 `Lab3/c` 保留 initramfs shell 並可 build/run。
 2. 先加入 `Lab3/user/`：把 spec 提供的 EL0 測試程式整理成可建置的 `user.img`；後面的 EL0 SVC demo 會把它放進 initramfs 後載入執行。
 3. 在 early boot 加入 EL2 to EL1，確認 kernel 在 EL1h 執行。
-4. 建立 exception core：vector table、context save/restore、C dispatcher。
+4. 建立 exception core：vector table、context save/restore、C dispatcher、basic priority task queue。
 5. 接上 EL0 SVC demo：從 initramfs 載入 `user.img` 到 `0x20000`，設定 `SP_EL0`，用 `eret` 進 EL0。
 6. 讓 SVC handler 印 `SPSR_EL1`、`ELR_EL1`、`ESR_EL1`，並 `eret` 回 user program。
-7. 接 core timer IRQ，先用同一個 exception core 印 boot seconds。
+7. 接 core timer IRQ，先用同一個 exception core enqueue timer task 並印 boot seconds。
 8. 接 Mini UART IRQ，建立 RX/TX buffer 和 async I/O。
-9. 在 advanced 部分加入 task queue、nested interrupt、priority/preemption。
+9. 在 advanced 部分擴充 nested interrupt、priority/preemption。
 10. 最後用 one-shot timer queue 實作 `setTimeout MESSAGE SECONDS`。
 
 ## User Program Artifact
@@ -124,34 +124,67 @@ aligned，每個 entry 是 0x80 bytes。vector entry 空間很小，所以 entry
 早期可以讓 entries 先共用同一個 `exception_entry`，但 frame layout 和 dispatcher 介面要
 先設計好，避免後續為 timer/UART 大改。
 
-### Stub and Handler
+### Entry, Dispatcher, and Handler
 
 建議把角色分清楚：
 
 | 名稱 | 所在 | 職責 |
 | --- | --- | --- |
-| stub / vector entry | assembly | mask exception、保存 context、呼叫 C handler、還原 context、`eret` |
-| dispatcher / proxy | C | 讀 `ESR_EL1`、interrupt pending registers，判斷事件來源 |
-| device/task handler | C | 處理 SVC、timer、UART 或 queued task |
+| vector entry | assembly | ARMv8 vector table 的固定入口；依來源 context 和 exception class 跳到對應 assembly stub |
+| assembly stub | assembly | 一律 mask DAIF、保存 context、呼叫 C dispatcher、還原 context、`eret` |
+| C dispatcher | C | 接收 origin/class，讀 `ESR_EL1` 或 interrupt pending registers，判斷來源並分派給 handler/task |
+| sync handler | C | 直接處理 SVC 等 synchronous exception，必要時修改 exception frame |
+| IRQ top half | C | acknowledge 或 mask interrupt source，將較重工作 enqueue 成 deferred task |
+| deferred task handler | C | 在 task queue 中處理 timer、UART 等 IRQ 延後工作 |
 
-標準流程：
+標準流程會先依 vector entry 區分 exception class，再交給 dispatcher 決定處理方式。
+目前主要實作 Sync 和 IRQ；FIQ、SError 先接到 default handler，保留之後擴充的入口。
 
-```text
-exception taken
-    -> vector entry
-    -> mask DAIF as needed
-    -> save general registers
-    -> save SPSR_EL1 / ELR_EL1
-    -> call C dispatcher(frame)
-    -> dispatcher handles or queues work
-    -> restore SPSR_EL1 / ELR_EL1
-    -> restore general registers
-    -> eret
+```mermaid
+flowchart TD
+    A[Exception taken] --> B[EL1 vector entry]
+    B --> C[Mask DAIF in exception entry]
+    C --> D[Save general registers]
+    D --> E[Save SPSR_EL1 and ELR_EL1]
+    E --> F[Call exception_dispatch with frame, origin, class]
+    F --> G{Exception class}
+
+    G -->|Sync| H[Read ESR_EL1]
+    H --> I{Sync source}
+    I -->|SVC| J[Call SVC handler in current trap context]
+    J --> K[Read or update exception_frame if needed]
+    K --> R[Restore SPSR_EL1 and ELR_EL1]
+
+    I -->|Other sync| L[Call default sync handler]
+    L --> R
+
+    G -->|IRQ| M[Check interrupt pending registers]
+    M --> N[IRQ top half acknowledges or masks source]
+    N --> O[Enqueue deferred task by priority]
+    O --> P[Run pending IRQ tasks before return]
+    P --> R
+
+    G -->|FIQ| Q[Call default FIQ handler]
+    Q --> R
+
+    G -->|SError| S[Call default SError handler]
+    S --> R
+
+    R --> T[Restore general registers]
+    T --> U[eret]
 ```
+
+Exception entry 一開始一律 mask DAIF，避免 handler 尚未保存完整 context 時又被其他
+exception 打斷。Assembly stub 不決定 nested policy，只負責保護現場；是否重新開 IRQ 由
+C dispatcher、IRQ top half 或 task queue 在已保存 context 的安全區段中決定。FIQ 和 SError 先
+維持 masked，等有明確 handler 後再開放。
+
+> 目前 FIQ 和 SError 不實作實際功能，但 vector table 和 dispatcher 會保留對應入口，讓
+> 後續新增 handler 時不需要改動 exception frame 或 entry path。
 
 ### Exception Frame
 
-User program 和 exception handler 共用 general purpose register bank。只要 C handler
+User program 和 exception path 共用 general purpose register bank。只要 C function
 呼叫 `printf` 或任何一般 C function，就會破壞 caller-saved registers。因此進 C 前必須保存
 完整 user context。
 
@@ -172,10 +205,45 @@ typedef struct {
     uint64_t spsr_el1;
     uint64_t elr_el1;
 } exception_frame_t;
+
+void exception_dispatch(exception_frame_t *frame,
+                        exception_origin_t origin,
+                        exception_class_t exception_class);
 ```
 
-這樣 C handler 可以安全讀寫 `frame->regs[0]`、`frame->elr_el1` 等欄位，不需要到處散落
+這樣 C dispatcher 和各 handler 可以安全讀寫 `frame->regs[0]`、`frame->elr_el1` 等欄位，不需要到處散落
 magic offset。
+
+### Priority Task Queue
+
+Interrupt handler 應該只完成必要的低階工作，例如確認來源、acknowledge interrupt、mask
+device interrupt 或搬走最小量資料。較重的處理放進 task queue，在 exception return 前由
+kernel 統一執行。
+
+Task queue 以 priority queue 實作，priority 數值越小代表優先權越高，會越先執行；同
+priority 的 task 維持 FIFO 順序。Task node 可由 simple heap lazy allocation 取得，完成後
+回收到 free list 重用，並用最大 node 數限制總配置量。
+
+> 目前先用 `simple_malloc` 搭配 free list 管理 task node，最多配置
+> `CONFIG_TASK_QUEUE_MAX_TASKS` 個 node；pending queue 則用 `list_head_t` intrusive list
+> 依 priority 插入。
+
+```c
+typedef void (*task_callback_t)(void *data);
+
+typedef enum {
+    TASK_PRIORITY_TIMER,
+    TASK_PRIORITY_UART,
+} task_priority_t;
+
+bool task_queue_push(task_priority_t priority, task_callback_t callback, void *data);
+void task_queue_run(void);
+```
+
+Synchronous exception 例如 SVC 直接在目前的 trap context 中處理，因為它通常需要讀寫
+當下的 `exception_frame_t`，例如設定 return value 或調整 return address。IRQ 則採用
+top half / deferred task 的分工：dispatcher 確認 interrupt source 並完成 acknowledge 或
+mask，較重的 timer/UART work 再 enqueue 到 priority task queue。
 
 ## EL0 SVC Demo
 
@@ -224,7 +292,10 @@ timer expires
     -> lower/current EL IRQ entry
     -> save context
     -> dispatcher checks core local interrupt source
-    -> timer handler prints boot seconds
+    -> timer handler acknowledges the interrupt
+    -> enqueue timer task
+    -> run pending tasks before returning
+    -> timer task prints boot seconds
     -> program next timeout
     -> restore context
     -> eret
@@ -268,16 +339,20 @@ UART TX ready
 Buffer 操作要保護 critical section。簡單作法是在操作 RX/TX buffer 前暫時 mask 對應 IRQ，
 操作完再打開。
 
-## Task Queue and Nested IRQ
+## Nested IRQ and Priority Task
 
-Advanced exercise 的重點是不要在 IRQ handler 裡做太久。真正架構應該是：
+Priority task queue 建立後，advanced exercise 會把 deferred work 擴充成可 nested、可
+preempt 的 task flow：
 
 1. IRQ handler 判斷來源。
 2. mask 該 device interrupt。
 3. 搬走必要資料或記錄狀態。
 4. enqueue task。
-5. 在回 user 前，以 interrupts enabled 的狀態執行 queued tasks。
-6. task 完成後 unmask device interrupt。
+5. 在 context 已保存且目前 interrupt source 已被 ack/mask 後，進入可 nested 的 task
+   execution 區段。
+6. task queue 或 deferred task handler 視情況 unmask IRQ，讓更高 priority interrupt 可以進來。
+7. 離開 task execution 區段前再次 mask IRQ。
+8. task 完成後 unmask device interrupt。
 
 這會自然導向 nested interrupt。為了 nested interrupt 正確，exception frame 必須保存
 `SPSR_EL1` 和 `ELR_EL1`，否則內層 interrupt 會覆蓋外層 return state。

@@ -34,6 +34,11 @@ el1_entry:
     ldr     x0, =_start
     mov     sp, x0
 
+    // Install the EL1 exception vector table before entering C code.
+    ldr     x0, =vector_table_el1
+    msr     vbar_el1, x0
+    isb
+
     // Clear the BSS segment.
     ldr     x0, =bss_begin
     ldr     x1, =bss_size

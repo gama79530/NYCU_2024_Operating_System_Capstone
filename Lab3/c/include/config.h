@@ -61,4 +61,11 @@
 #error "CONFIG_REBOOT_TICKS must fit the watchdog time field"
 #endif
 
+/* task_queue.c */
+#define CONFIG_TASK_QUEUE_MAX_TASKS 64
+
+#if CONFIG_TASK_QUEUE_MAX_TASKS < 1
+#error "CONFIG_TASK_QUEUE_MAX_TASKS must be at least 1"
+#endif
+
 #endif

@@ -3,6 +3,8 @@
 
 #include "types.h"
 
+#define container_of(ptr, type, member) ((type *) ((void *) (ptr) - offsetof(type, member)))
+
 static inline uintptr_t align_up(uintptr_t value, uintptr_t alignment)
 {
     return (value + alignment - 1) & ~(alignment - 1);
