@@ -2,6 +2,12 @@
 
 .section ".text"
 
+/*
+ * Enter an EL0 program.
+ *
+ * x0: EL0 entry address.
+ * x1: EL0 stack pointer.
+ */
 .global el_enter_el0
 .type el_enter_el0, %function
 el_enter_el0:

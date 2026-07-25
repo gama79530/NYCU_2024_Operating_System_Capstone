@@ -30,25 +30,74 @@ typedef enum {
 } shell_error_t;
 
 /* Private function declarations */
+/* Convert a shell_error_t value into a user-facing error message. */
 static const char *shell_error_string(shell_error_t error);
+
+/* Print a shell_error_t using the common "Error:" prefix. */
 static void shell_print_error(shell_error_t error);
+
+/*
+ * Read one line from Mini UART into buffer.
+ *
+ * Characters beyond the backing buffer are still echoed so the user sees what
+ * they typed, but the function reports SHELL_ERROR_COMMAND_TOO_LONG on Enter.
+ */
 static shell_error_t shell_read_line(char *buffer, size_t capacity);
+
+/*
+ * Split a command line into space-separated arguments in place.
+ *
+ * Spaces are replaced with '\0', and argv points into the original line
+ * buffer.
+ */
 static shell_error_t shell_parse_args(char *line, char *argv[], size_t capacity, size_t *argc);
+
+/* Parse a decimal size argument used by shell commands. */
 static bool shell_parse_size(const char *str, size_t *value);
+
+/* Find a command descriptor by command name. */
 static const command_t *shell_find_command(const char *name);
+
+/* Print the usage string for a command descriptor. */
 static void shell_print_usage(const command_t *command);
+
+/* Dispatch argc/argv to a registered shell command handler. */
 static void shell_dispatch(size_t argc, char *argv[]);
 
-/* command handlers */
+/* Private command declarations */
+/* Print command help or the usage/details for one command. */
 static void cmd_help(size_t argc, char *argv[]);
+
+/* Print a simple greeting used to verify basic shell command dispatch. */
 static void cmd_hello(size_t argc, char *argv[]);
+
+/* Print Raspberry Pi mailbox information selected by command arguments. */
 static void cmd_mailbox(size_t argc, char *argv[]);
+
+/* Reboot the board through the watchdog power controller. */
 static void cmd_reboot(size_t argc, char *argv[]);
+
+/* List files from the current initramfs archive. */
 static void cmd_ls(size_t argc, char *argv[]);
+
+/* Print one file from the current initramfs archive. */
 static void cmd_cat(size_t argc, char *argv[]);
+
+/* Print the current simple heap allocator range and remaining space. */
 static void cmd_heap(size_t argc, char *argv[]);
+
+/* Allocate bytes from the simple heap for allocator testing. */
 static void cmd_alloc(size_t argc, char *argv[]);
+
+/* Print devicetree and initramfs range information discovered at boot. */
 static void cmd_dtb(size_t argc, char *argv[]);
+
+/*
+ * Load an EL0 user program from initramfs and enter it.
+ *
+ * The default program is the Lab3 user.img SVC demo linked at
+ * CONFIG_EL0_USER_ENTRY.
+ */
 static void cmd_svc(size_t argc, char *argv[]);
 
 /* Private data */

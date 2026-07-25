@@ -5,6 +5,9 @@
 #include "string.h"
 #include "util.h"
 
+/* Private types */
+
+/* Private constants */
 #define CPIO_NEWC_MAGIC "070701"
 #define CPIO_NEWC_HEADER_SIZE 110
 #define CPIO_NEWC_FIELD_SIZE 8
@@ -28,7 +31,10 @@
  */
 
 /* Private function declarations */
+/* Return true when [begin, begin + size) is inside the active archive range. */
 static bool range_contains(uintptr_t begin, uintptr_t size);
+
+/* Parse one fixed-width ASCII hex field from a cpio newc header. */
 static bool read_hex_field(const uint8_t *cursor, size_t offset, size_t *value);
 
 /* Private data */

@@ -10,8 +10,14 @@ typedef enum {
     TASK_PRIORITY_UART = 1,
 } task_priority_t;
 
-/* Lower numeric values run first. Tasks with the same priority keep FIFO order. */
+/*
+ * Enqueue deferred work in priority order.
+ *
+ * Lower numeric values run first. Tasks with the same priority keep FIFO order.
+ */
 bool task_queue_push(task_priority_t priority, task_callback_t callback, void *data);
+
+/* Run all currently queued deferred tasks. */
 void task_queue_run(void);
 
 #endif

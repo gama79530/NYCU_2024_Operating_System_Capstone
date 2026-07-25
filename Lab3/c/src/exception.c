@@ -3,13 +3,57 @@
 #include "printf.h"
 #include "task_queue.h"
 
+/* Private types */
+
+/* Private constants */
 #define ESR_EL1_EC_SHIFT 26
 #define ESR_EL1_EC_MASK  0x3f
 #define ESR_EL1_EC_SVC64 0x15
 #define ESR_EL1_ISS_MASK 0x01ffffff
 
+/* Private function declarations */
+/* Read the syndrome register for the exception currently being handled. */
+static uint64_t read_esr_el1(void);
+
+/*
+ * Print a 64-bit value in hexadecimal using the project's printf support.
+ *
+ * The bundled printf handles unsigned-int-sized %x values, so split wider
+ * values into high and low halves.
+ */
+static void print_u64_hex(uint64_t value);
+
+/*
+ * Handle the Lab3 EL0 SVC demo.
+ *
+ * This reports the SVC immediate and selected saved frame state without
+ * modifying the user program's context.
+ */
+static void handle_svc_demo(exception_frame_t *frame, exception_origin_t origin, uint64_t esr);
+
+/* Convert an exception origin enum into a compact debug string. */
 static const char *exception_origin_name(exception_origin_t origin);
 
+/* Print diagnostics for synchronous exceptions that do not have a handler yet. */
+static void handle_default_sync_exception(exception_frame_t *frame,
+                                          exception_origin_t origin,
+                                          uint64_t esr);
+
+/* Dispatch synchronous exceptions by ESR_EL1 exception class. */
+static void dispatch_sync_exception(exception_frame_t *frame, exception_origin_t origin);
+
+/* Dispatch IRQ exceptions and then drain any deferred tasks. */
+static void dispatch_irq_exception(exception_origin_t origin);
+
+/* Report FIQ exceptions until Lab3 adds a real FIQ handler. */
+static void handle_fiq_exception(exception_origin_t origin);
+
+/* Report SError exceptions until Lab3 adds a real SError handler. */
+static void handle_serror_exception(exception_origin_t origin);
+
+/* Private data */
+
+/* Function implementations */
 static uint64_t read_esr_el1(void)
 {
     uint64_t value;

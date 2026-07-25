@@ -3,6 +3,7 @@
 /* Private types */
 
 /* Private function declarations */
+/* Convert one ASCII hex digit into its numeric value. */
 static bool char_to_digit(char c, unsigned int *digit);
 
 /* Private data */

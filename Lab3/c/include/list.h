@@ -19,6 +19,7 @@ typedef struct list_head {
          (node) != (head); \
          (node) = (safe), (safe) = (node)->next)
 
+/* Insert node between prev and next. */
 static inline void list_add(list_head_t *node, list_head_t *prev, list_head_t *next)
 {
     prev->next = node;
@@ -27,16 +28,19 @@ static inline void list_add(list_head_t *node, list_head_t *prev, list_head_t *n
     node->next = next;
 }
 
+/* Insert node as the first element after head. */
 static inline void list_add_first(list_head_t *node, list_head_t *head)
 {
     list_add(node, head, head->next);
 }
 
+/* Insert node as the last element before head. */
 static inline void list_add_last(list_head_t *node, list_head_t *head)
 {
     list_add(node, head->prev, head);
 }
 
+/* Remove node from its current list and reinitialize it as a single-node list. */
 static inline void list_remove(list_head_t *node)
 {
     node->next->prev = node->prev;
@@ -45,11 +49,13 @@ static inline void list_remove(list_head_t *node)
     node->prev = node;
 }
 
+/* Return true when head has no list elements. */
 static inline bool list_is_empty(list_head_t *head)
 {
     return head->next == head;
 }
 
+/* Return true when node is the sentinel head for this list. */
 static inline bool list_node_is_head(list_head_t *node, list_head_t *head)
 {
     return node == head;

@@ -9,10 +9,18 @@
 /* Private types */
 
 /* Private function declarations */
+/*
+ * Send a mailbox property request and wait for the matching response.
+ *
+ * The buffer must be 16-byte aligned and addressable through the 32-bit
+ * mailbox interface.
+ */
 static mailbox_error_t mailbox_property_call(volatile uint32_t *buffer);
+
+/* Validate the first tag response in a property buffer. */
 static mailbox_error_t mailbox_validate_tag(volatile uint32_t *buffer, uint32_t value_size);
 
-/* Private data */
+/* Private constants */
 /*
  * Mailbox property interface
  * ref: https://github.com/raspberrypi/firmware/wiki/Mailbox-property-interface
@@ -78,6 +86,7 @@ static mailbox_error_t mailbox_validate_tag(volatile uint32_t *buffer, uint32_t 
 #define MAILBOX_BUFFER_WORDS 36
 #define MAILBOX_ERROR_COUNT (sizeof(mailbox_error_messages) / sizeof(mailbox_error_messages[0]))
 
+/* Private data */
 /* The current single-core kernel serializes access to this shared buffer. */
 static volatile uint32_t mailbox_buffer[MAILBOX_BUFFER_WORDS] __attribute__((aligned(16)));
 

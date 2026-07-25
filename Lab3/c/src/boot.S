@@ -10,6 +10,12 @@
 */
 .section ".text.boot"
 
+/*
+ * Kernel entry point from firmware, bootloader, or QEMU.
+ *
+ * Keep only core 0 active, enter EL1 when starting from EL2, install the EL1
+ * vector table, clear BSS, and call the C kernel entry.
+ */
 .global _start
 .type _start, %function
 _start:
@@ -29,6 +35,7 @@ _start:
     beq     setup_el2_to_el1
     b       hang
 
+// Continue booting once execution is already in EL1.
 el1_entry:
     // The stack grows downward from the kernel load address.
     ldr     x0, =_start
@@ -48,6 +55,7 @@ el1_entry:
     mov     x0, x19
     bl      main
 
+// Configure EL2 state so eret enters the EL1 kernel in AArch64 EL1h.
 setup_el2_to_el1:
     // Run the lower exception level in AArch64.
     ldr     x0, =HCR_EL2_VALUE
@@ -61,6 +69,7 @@ setup_el2_to_el1:
     msr     elr_el2, x0
     eret
 
+// Park unsupported cores or impossible boot states.
 hang:
     wfe
     b       hang

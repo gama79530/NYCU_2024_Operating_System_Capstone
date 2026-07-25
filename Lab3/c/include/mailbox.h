@@ -12,8 +12,13 @@ typedef enum {
     MAILBOX_ERROR_TAG_RESPONSE = -5,
 } mailbox_error_t;
 
+/* Query the board revision through the mailbox property interface. */
 mailbox_error_t mailbox_get_board_revision(uint32_t *revision);
+
+/* Query the ARM memory base and size through the mailbox property interface. */
 mailbox_error_t mailbox_get_arm_memory(uint32_t *base, uint32_t *size);
+
+/* Convert a mailbox_error_t value into a user-facing error string. */
 const char *mailbox_error_string(mailbox_error_t error);
 
 #endif

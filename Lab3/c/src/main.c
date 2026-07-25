@@ -9,7 +9,17 @@
 
 /* Private types */
 
+/* Public function declarations */
+/*
+ * Kernel C entry point after early assembly boot.
+ *
+ * Initialize basic subsystems, discover the initramfs range from the DTB when
+ * available, and then enter the interactive shell.
+ */
+void main(uint64_t dtb_addr);
+
 /* Private function declarations */
+/* Bridge the printf library's putc callback to mini UART output. */
 static void printf_putc(void *context, char c);
 
 /* Private data */

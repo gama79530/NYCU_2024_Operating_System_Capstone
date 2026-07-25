@@ -21,11 +21,13 @@
 
 .section ".text"
 
+// Emit one 0x80-byte vector entry that branches to target.
 .macro vector_entry target
     .align 7
     b       \target
 .endm
 
+// Save all general registers plus SPSR_EL1/ELR_EL1 into exception_frame_t.
 .macro save_exception_frame
     msr     daifset, #0xf
     sub     sp, sp, #EXCEPTION_FRAME_SIZE
@@ -52,6 +54,7 @@
     stp     x0, x1, [sp, #EXCEPTION_FRAME_SPSR_EL1_ELR_EL1]
 .endm
 
+// Build an assembly entry stub for one vector origin and exception class.
 .macro exception_entry label, origin, class
 \label:
     save_exception_frame
@@ -62,6 +65,12 @@
     b       restore_exception_frame
 .endm
 
+/*
+ * EL1 exception vector table.
+ *
+ * VBAR_EL1 points here. Each entry branches to a generated stub that saves the
+ * frame and calls exception_dispatch().
+ */
 .align 11
 .global vector_table_el1
 .type vector_table_el1, %function
@@ -91,6 +100,14 @@ vector_table_el1:
     vector_entry lower_aarch32_serror_entry
 .size vector_table_el1, . - vector_table_el1
 
+/*
+ * Generate one entry stub for each vector-table slot.
+ *
+ * Each exception_entry invocation expands into a label plus the common
+ * save/dispatch/restore path. The origin and class constants let the C
+ * dispatcher distinguish which vector slot was taken without duplicating
+ * handler logic in assembly.
+ */
 exception_entry current_sp0_sync_entry, EXCEPTION_ORIGIN_CURRENT_SP0_VALUE, EXCEPTION_CLASS_SYNC_VALUE
 exception_entry current_sp0_irq_entry, EXCEPTION_ORIGIN_CURRENT_SP0_VALUE, EXCEPTION_CLASS_IRQ_VALUE
 exception_entry current_sp0_fiq_entry, EXCEPTION_ORIGIN_CURRENT_SP0_VALUE, EXCEPTION_CLASS_FIQ_VALUE
@@ -111,6 +128,7 @@ exception_entry lower_aarch32_irq_entry, EXCEPTION_ORIGIN_LOWER_AARCH32_VALUE, E
 exception_entry lower_aarch32_fiq_entry, EXCEPTION_ORIGIN_LOWER_AARCH32_VALUE, EXCEPTION_CLASS_FIQ_VALUE
 exception_entry lower_aarch32_serror_entry, EXCEPTION_ORIGIN_LOWER_AARCH32_VALUE, EXCEPTION_CLASS_SERROR_VALUE
 
+// Restore exception_frame_t and return to the interrupted context.
 restore_exception_frame:
     ldp     x0, x1, [sp, #EXCEPTION_FRAME_SPSR_EL1_ELR_EL1]
     msr     spsr_el1, x0

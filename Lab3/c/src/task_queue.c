@@ -6,6 +6,7 @@
 #include "list.h"
 #include "util.h"
 
+/* Private types */
 typedef struct task_node {
     list_head_t anchor;
     task_priority_t priority;
@@ -13,10 +14,19 @@ typedef struct task_node {
     void *data;
 } task_node_t;
 
+/* Private function declarations */
+/* Allocate a task node from the free list or the simple heap. */
+static task_node_t *task_alloc(void);
+
+/* Reset a task node and return it to the free list. */
+static void task_free(task_node_t *task);
+
+/* Private data */
 static LIST_HEAD(pending_queue);
 static LIST_HEAD(free_queue);
 static size_t allocated_count;
 
+/* Function implementations */
 static task_node_t *task_alloc(void)
 {
     task_node_t *task;

@@ -3,8 +3,13 @@
 
 #include "types.h"
 
+/* Compare two null-terminated strings. */
 int strcmp(const char *lhs, const char *rhs);
+
+/* Compare at most count characters from two strings. */
 int strncmp(const char *lhs, const char *rhs, size_t count);
+
+/* Return the length of a null-terminated string. */
 size_t strlen(const char *str);
 
 /*

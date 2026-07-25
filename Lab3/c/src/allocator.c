@@ -3,6 +3,11 @@
 #include "config.h"
 #include "util.h"
 
+/* Private types */
+
+/* Private function declarations */
+
+/* Private data */
 extern char simple_heap_begin;
 extern char simple_heap_end;
 
@@ -10,6 +15,7 @@ static uintptr_t heap_begin;
 static uintptr_t heap_current;
 static uintptr_t heap_end;
 
+/* Function implementations */
 void simple_allocator_init(void)
 {
     heap_begin = (uintptr_t) &simple_heap_begin;

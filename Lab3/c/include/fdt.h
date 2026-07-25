@@ -21,8 +21,13 @@ typedef struct {
     const char *strings_end;
 } fdt_t;
 
+/* Convert an fdt_error_t value into a user-facing error string. */
 const char *fdt_error_string(fdt_error_t error);
+
+/* Parse and validate a Flattened Device Tree blob at address. */
 fdt_error_t fdt_init(fdt_t *fdt, uintptr_t address);
+
+/* Look up a property by absolute node path and property name. */
 fdt_error_t fdt_get_property(const fdt_t *fdt,
                              const char *path,
                              const char *name,

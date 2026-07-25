@@ -6,7 +6,10 @@
 /* Private types */
 
 /* Private function declarations */
+/* Read one raw byte from Mini UART, blocking until RX data is ready. */
 static char mini_uart_getb(void);
+
+/* Write one raw byte to Mini UART, blocking until TX space is ready. */
 static void mini_uart_putb(char c);
 
 /* Private data */

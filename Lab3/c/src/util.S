@@ -1,5 +1,10 @@
 .section ".text"
 
+/*
+ * Zero x1 bytes starting at x0.
+ *
+ * The loop clears 8 bytes at a time, then finishes any trailing bytes.
+ */
 .global memzero
 .type memzero, %function
 memzero:
@@ -19,6 +24,7 @@ memzero:
     ret
 .size memzero, . - memzero
 
+// Read a 32-bit memory-mapped register from address x0.
 .global get32
 .type get32, %function
 get32:
@@ -26,6 +32,7 @@ get32:
     ret
 .size get32, . - get32
 
+// Write w1 to the 32-bit memory-mapped register at address x0.
 .global put32
 .type put32, %function
 put32:
@@ -33,6 +40,7 @@ put32:
     ret
 .size put32, . - put32
 
+// Issue a full-system data memory barrier.
 .global data_memory_barrier
 .type data_memory_barrier, %function
 data_memory_barrier:
@@ -40,6 +48,7 @@ data_memory_barrier:
     ret
 .size data_memory_barrier, . - data_memory_barrier
 
+// Issue a full-system data synchronization barrier.
 .global data_sync_barrier
 .type data_sync_barrier, %function
 data_sync_barrier:

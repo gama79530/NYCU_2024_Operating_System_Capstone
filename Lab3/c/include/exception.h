@@ -40,6 +40,12 @@ typedef struct {
     uint64_t elr_el1;
 } exception_frame_t;
 
+/*
+ * Dispatch an exception after the assembly stub has saved the full frame.
+ *
+ * origin identifies which vector table group was used, and exception_class
+ * identifies sync, IRQ, FIQ, or SError.
+ */
 void exception_dispatch(exception_frame_t *frame,
                         exception_origin_t origin,
                         exception_class_t exception_class);

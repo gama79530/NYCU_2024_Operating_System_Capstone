@@ -10,9 +10,11 @@
 
 /* Private function declarations */
 
-/* Private data */
+/* Private constants */
 #define PM_PASSWORD 0x5A000000
 #define PM_RSTC_FULL_RESET 0x00000020
+
+/* Private data */
 
 /* Function implementations */
 void power_reboot(void)

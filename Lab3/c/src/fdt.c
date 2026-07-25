@@ -5,6 +5,7 @@
 #include "string.h"
 #include "util.h"
 
+/* Private constants */
 #define FDT_MAGIC 0xD00DFEEDU
 
 /*
@@ -81,6 +82,7 @@
 
 #define FDT_TRAVERSE_STOP ((fdt_error_t) 1)
 
+/* Private types */
 typedef struct {
     const char *path;
     const char *name;
@@ -108,10 +110,24 @@ typedef struct {
 typedef fdt_error_t (*fdt_callback_t)(const fdt_traverse_item_t *item, void *context);
 
 /* Private function declarations */
+/* Read one big-endian 32-bit word from the structure block and advance cursor. */
 static bool fdt_read_u32(const uint8_t **cursor, const uint8_t *limit, uint32_t *value);
+
+/* Skip a null-terminated node name and align cursor to the next FDT token. */
 static bool fdt_skip_node_name(const uint8_t **cursor, const uint8_t *limit);
+
+/* Skip size bytes and align cursor to the next FDT token boundary. */
 static bool fdt_skip_bytes_aligned(const uint8_t **cursor, const uint8_t *limit, size_t size);
+
+/*
+ * Walk the FDT structure block and call callback for each node/property item.
+ *
+ * The traversal keeps only a depth stack; callbacks decide whether to collect
+ * data, ignore items, or stop early with FDT_TRAVERSE_STOP.
+ */
 static fdt_error_t fdt_traverse(const fdt_t *fdt, fdt_callback_t callback, void *context);
+
+/* Parse one FDT_PROP token payload and pass it to the traversal callback. */
 static fdt_error_t fdt_parse_property(const fdt_t *fdt,
                                       const uint8_t **cursor,
                                       const uint8_t *limit,
@@ -119,9 +135,22 @@ static fdt_error_t fdt_parse_property(const fdt_t *fdt,
                                       const char *node_name,
                                       fdt_callback_t callback,
                                       void *callback_context);
+
+/*
+ * Traversal callback used by fdt_get_property().
+ *
+ * It tracks which depth levels match the requested path and stops traversal
+ * once the target property is found.
+ */
 static fdt_error_t fdt_property_lookup_callback(const fdt_traverse_item_t *item, void *context);
+
+/* Return true when node_name matches the requested path component at depth. */
 static bool fdt_path_component_matches(const char *path, int depth, const char *node_name);
+
+/* Return true when the requested path ends exactly at depth. */
 static bool fdt_path_ends_at_depth(const char *path, int depth);
+
+/* Return a validated string-block pointer for a property name offset. */
 static const char *fdt_string_at(const fdt_t *fdt, uint32_t offset);
 
 /* Private data */
