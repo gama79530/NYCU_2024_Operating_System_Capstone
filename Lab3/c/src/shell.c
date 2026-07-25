@@ -36,11 +36,20 @@ static const char *shell_error_string(shell_error_t error);
 /* Print a shell_error_t using the common "Error:" prefix. */
 static void shell_print_error(shell_error_t error);
 
+/* Clear the current terminal line based on the number of visible characters. */
+static void shell_clear_current_line(size_t length);
+
+/* Clear the prompt line using the current buffered input length. */
+static void shell_clear_prompt_line(size_t buffer_length);
+
+/* Redraw the prompt and the buffered input line. */
+static void shell_redraw_prompt(const char *buffer);
+
 /*
  * Read one line from Mini UART into buffer.
  *
- * Characters beyond the backing buffer are still echoed so the user sees what
- * they typed, but the function reports SHELL_ERROR_COMMAND_TOO_LONG on Enter.
+ * Printable characters that would exceed capacity are rejected immediately.
+ * The current buffered line is redrawn so the user can keep editing it.
  */
 static shell_error_t shell_read_line(char *buffer, size_t capacity);
 
@@ -101,6 +110,8 @@ static void cmd_dtb(size_t argc, char *argv[]);
 static void cmd_svc(size_t argc, char *argv[]);
 
 /* Private data */
+#define SHELL_PROMPT "$ "
+
 static const fdt_t *shell_fdt;
 
 static const command_t commands[] = {
@@ -137,7 +148,7 @@ void shell_run(const fdt_t *fdt)
         size_t argc = 0;
         shell_error_t error;
 
-        printf("$ ");
+        printf(SHELL_PROMPT);
 
         error = shell_read_line(buffer, sizeof(buffer));
         if (error != SHELL_SUCCESS) {
@@ -177,10 +188,28 @@ static void shell_print_error(shell_error_t error)
     printf("Error: %s\n", shell_error_string(error));
 }
 
+static void shell_clear_current_line(size_t length)
+{
+    printf("\r");
+    for (size_t i = 0; i < length; i++) {
+        printf(" ");
+    }
+    printf("\r");
+}
+
+static void shell_clear_prompt_line(size_t buffer_length)
+{
+    shell_clear_current_line(sizeof(SHELL_PROMPT) - 1 + buffer_length);
+}
+
+static void shell_redraw_prompt(const char *buffer)
+{
+    printf(SHELL_PROMPT "%s", buffer);
+}
+
 static shell_error_t shell_read_line(char *buffer, size_t capacity)
 {
     size_t buffer_length = 0;
-    size_t display_length = 0;
 
     while (true) {
         char c = mini_uart_getc();
@@ -188,15 +217,12 @@ static shell_error_t shell_read_line(char *buffer, size_t capacity)
         if (c == '\n') {
             buffer[buffer_length] = '\0';
             printf("\n");
-            return display_length >= capacity ? SHELL_ERROR_COMMAND_TOO_LONG : SHELL_SUCCESS;
+            return SHELL_SUCCESS;
         }
 
         if (c == '\b' || c == 0x7f) {
-            if (display_length > 0) {
-                display_length--;
-                if (buffer_length > display_length) {
-                    buffer_length--;
-                }
+            if (buffer_length > 0) {
+                buffer_length--;
                 printf("\b \b");
             }
             continue;
@@ -206,10 +232,15 @@ static shell_error_t shell_read_line(char *buffer, size_t capacity)
             continue;
         }
 
-        if (display_length + 1 < capacity) {
-            buffer[buffer_length++] = c;
+        if (buffer_length + 1 >= capacity) {
+            buffer[buffer_length] = '\0';
+            shell_clear_prompt_line(buffer_length);
+            shell_print_error(SHELL_ERROR_COMMAND_TOO_LONG);
+            shell_redraw_prompt(buffer);
+            continue;
         }
-        display_length++;
+
+        buffer[buffer_length++] = c;
         printf("%c", c);
     }
 }
