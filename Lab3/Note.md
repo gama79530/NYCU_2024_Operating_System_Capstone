@@ -31,9 +31,8 @@ EL2 -> EL1 kernel
 | Task queue | 提供 interrupt handler 延後執行工作的 priority queue，讓 IRQ path 維持短小 | `task_queue.*`, `exception.c` |
 | User program artifact | 建置 spec 提供的 EL0 測試程式，產生可放進 initramfs 的 `user.img` | `Lab3/user/` |
 | EL0 SVC demo | 從 initramfs 載入 `user.img`，切到 EL0，處理 user program 的 `svc` | `shell.c`, `el.*`, `exception.*` |
-| Core timer IRQ | 啟用 physical timer，將 timer IRQ 接到同一個 dispatcher | `timer.*`, `exception.c` |
+| Core timer IRQ / Timer queue | 啟用 physical timer，並用 one-shot timer multiplex 多個 software timeout | `timer.*`, `exception.c`, `shell.c` |
 | UART IRQ | 啟用 Mini UART RX/TX IRQ，改用 buffer 做 async I/O | `mini_uart.*`, `exception.c` |
-| Timer queue | 用 one-shot core timer multiplex 多個 software timer | `timer.*`, `shell.c` |
 
 建議實作順序：
 
@@ -42,10 +41,8 @@ EL2 -> EL1 kernel
 3. 在 early boot 加入 EL2 to EL1，確認 kernel 在 EL1h 執行。
 4. 建立 exception core：vector table、context save/restore、C dispatcher、basic priority task queue。
 5. 接上 EL0 SVC demo：從 initramfs 載入 `user.img` 到 `0x20000`，設定 `SP_EL0`，用 `eret` 進 EL0，並在 SVC handler 印 `SPSR_EL1`、`ELR_EL1`、`ESR_EL1`。
-6. 接 core timer IRQ，先用同一個 exception core enqueue timer task 並印 boot seconds。
-7. 接 Mini UART IRQ，建立 RX/TX buffer 和 async I/O。
-8. 在 advanced 部分擴充 nested interrupt、priority/preemption。
-9. 最後用 one-shot timer queue 實作 `setTimeout MESSAGE SECONDS`。
+6. 接 core timer IRQ 和 timer queue：用 physical timer 做 one-shot timeout multiplexing，並提供 `setTimeout [message] [seconds]` demo；timer callback 期間先建立可 nested IRQ 的基本 policy。
+7. 接 Mini UART IRQ，建立 RX/TX buffer 和 async I/O，並和 timer IRQ 一起驗證 interrupt source masking、priority 和 nested IRQ 行為。
 
 ## User Program Artifact
 
@@ -281,20 +278,23 @@ svc [path]
 因為 spec 的 user program 最後會停在 EL0 無限迴圈，所以 demo 完成後不會回 shell
 prompt。這是預期行為，不是 shell 壞掉。
 
-## Core Timer IRQ
+## Core Timer IRQ and Timer Queue
 
 Core timer IRQ 不應該建立另一套 exception path，而是接到同一個 exception core：
 
 ```text
-timer expires
+setTimeout [message] [seconds]
+    -> record expires_at = now + seconds
+    -> insert event into timer queue by expires_at
+    -> if event becomes queue head, run expired events and reprogram physical timer
+
+physical timer expires
     -> lower/current EL IRQ entry
     -> save context
     -> dispatcher checks core local interrupt source
-    -> timer handler acknowledges the interrupt
-    -> enqueue timer task
-    -> run pending tasks before returning
-    -> timer task prints boot seconds
-    -> program next timeout
+    -> timer handler disables current one-shot timer
+    -> pop and run all expired timer callbacks
+    -> program next waiting event if any
     -> restore context
     -> eret
 ```
@@ -303,12 +303,55 @@ timer expires
 
 | 步驟 | 操作 |
 | --- | --- |
+| 初始化 timer 模組 | 讀 `cntfrq_el0`，記錄 counter frequency |
+| 允許 EL1 存取 counter/timer | 在 EL2 設定 `CNTHCTL_EL2.EL1PCTEN/EL1PCEN` |
 | 啟用 physical timer | `cntp_ctl_el0 = 1` |
-| 設定 timeout | 寫 `cntp_tval_el0`，basic 要求下一次為 2 秒後 |
-| unmask core0 timer IRQ | `CORE0_TIMER_IRQ_CTRL = 0x40000040`，寫 bit 1 |
-| 開 CPU IRQ | basic 可只在 EL0 開 IRQ；advanced 會需要 EL1 IRQ |
+| 設定 timeout | 寫 `cntp_tval_el0`，依 queue head 設定下一個 one-shot deadline |
+| route core0 timer IRQ | `CORE0_TIMER_IRQ_CTRL` 寫 physical non-secure timer IRQ bit |
+| 開 CPU IRQ | kernel 進入 shell 前清掉 DAIF 的 IRQ mask |
 
 handler 可用 `cntpct_el0 / cntfrq_el0` 算 boot 後秒數。
+
+Core timer 是 one-shot timer，一次只能設定一個 expiry。因此 software timer queue 依
+`expires_at` 排序，queue head 代表下一個硬體 timer deadline。若同一時間到期，維持 FIFO
+順序。
+
+```text
+timer_add_timeout(seconds, message)
+    -> allocate timer_event_t from simple heap / free list
+    -> expires_at = cntpct_el0 + seconds * cntfrq_el0
+    -> insert event by expires_at
+    -> if new event is queue head:
+           run expired events directly
+           reprogram hardware timer for next unexpired event
+
+timer_handle_irq()
+    -> disable physical timer
+    -> while queue head is expired:
+           pop event
+           run callback
+           recycle event
+    -> program next queue head
+```
+
+`setTimeout` 是 non-blocking demo command。為了方便 demo，沒有參數時使用預設值：
+
+```text
+setTimeout
+    -> message = "timeout"
+    -> seconds = 2
+
+setTimeout MESSAGE SECONDS
+    -> message = MESSAGE
+    -> seconds = SECONDS
+```
+
+timeout callback 會先清掉目前 shell prompt line，印出 timeout 訊息，再把使用者輸入到
+一半的 buffer 重畫回來：
+
+```text
+[Timeout at 6 seconds since booting]: timeout
+```
 
 ## Mini UART IRQ
 
@@ -337,10 +380,15 @@ UART TX ready
 Buffer 操作要保護 critical section。簡單作法是在操作 RX/TX buffer 前暫時 mask 對應 IRQ，
 操作完再打開。
 
-## Nested IRQ and Priority Task
+## IRQ Priority and Nesting Policy
 
-Priority task queue 建立後，advanced exercise 會把 deferred work 擴充成可 nested、可
-preempt 的 task flow：
+Nested IRQ 和 priority/preemption 不是獨立於 interrupt source 的單一步驟，而是 timer
+IRQ、UART IRQ 在實作時共同遵守的 policy。只有 timer IRQ 時，可以先驗證 callback 期間
+允許 nested IRQ；接上 UART IRQ 後，才有足夠的事件來源驗證不同 IRQ task 的 priority 和
+device interrupt masking 是否正確。
+
+Priority task queue 建立後，IRQ deferred work 可以逐步擴充成可 nested、可 preempt 的
+task flow：
 
 1. IRQ handler 判斷來源。
 2. mask 該 device interrupt。
@@ -348,12 +396,16 @@ preempt 的 task flow：
 4. enqueue task。
 5. 在 context 已保存且目前 interrupt source 已被 ack/mask 後，進入可 nested 的 task
    execution 區段。
-6. task queue 或 deferred task handler 視情況 unmask IRQ，讓更高 priority interrupt 可以進來。
+6. task queue 或 deferred task handler 視情況 unmask IRQ，讓其他 IRQ source 可以進來。
 7. 離開 task execution 區段前再次 mask IRQ。
 8. task 完成後 unmask device interrupt。
 
-這會自然導向 nested interrupt。為了 nested interrupt 正確，exception frame 必須保存
-`SPSR_EL1` 和 `ELR_EL1`，否則內層 interrupt 會覆蓋外層 return state。
+目前 nested policy 只針對 IRQ，不包含 FIQ、SError 或 Debug exception。其他 exception
+class 尚未建立 queue、handler 和 priority policy，因此先保持 masked；等有明確來源與處理
+策略後再開放。
+
+為了 nested IRQ 正確，exception frame 必須保存 `SPSR_EL1` 和 `ELR_EL1`，否則內層
+interrupt 會覆蓋外層 return state。
 
 Priority task queue 可以先用「priority + FIFO」：
 
@@ -364,26 +416,6 @@ timer task priority < UART task priority
 
 回到前一層 handler 前可以檢查是否有更高 priority task，若有則先執行它，形成簡單
 preemption。
-
-## Timer Multiplexing
-
-Core timer 是 one-shot timer，一次只能設定一個 expiry。Advanced timer API 可以用 sorted
-timer queue：
-
-```text
-add_timer(callback, data, after_ticks)
-    -> expires_at = now + after_ticks
-    -> insert by expires_at
-    -> if new timer is queue head, reprogram hardware timer
-
-timer IRQ
-    -> pop expired timers
-    -> run callbacks
-    -> program next queue head
-```
-
-`setTimeout MESSAGE SECONDS` 應該是 non-blocking。使用者可以連續設定多個 timeout，
-實際印出順序由 command 執行時間加上指定秒數決定。
 
 ## Build and Run
 
@@ -416,6 +448,22 @@ SVC #0 from lower_aarch64: x0 = 5
 SPSR_EL1 = 0x800003c0
 ELR_EL1  = 0x2000c
 ESR_EL1  = 0x56000000
+```
+
+Timer queue demo：
+
+```text
+$ setTimeout
+<Timer>: current time: 0 seconds since booting.
+[Timeout at 2 seconds since booting]: timeout
+$
+$ setTimeout first 3
+<Timer>: current time: 3 seconds since booting.
+$ setTimeout second 1
+<Timer>: current time: 4 seconds since booting.
+[Timeout at 5 seconds since booting]: second
+[Timeout at 6 seconds since booting]: first
+$
 ```
 
 若使用共用 UART bootloader 上傳 actual kernel：

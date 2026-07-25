@@ -1,10 +1,12 @@
 #include "allocator.h"
 #include "config.h"
+#include "exception.h"
 #include "fdt.h"
 #include "initramfs.h"
 #include "mini_uart.h"
 #include "printf.h"
 #include "shell.h"
+#include "timer.h"
 #include "types.h"
 
 /* Private types */
@@ -36,6 +38,7 @@ void main(uint64_t dtb_addr)
     mini_uart_init();
     init_printf(NULL, printf_putc);
     simple_allocator_init();
+    timer_init();
 
     /*
      * Keep QEMU's default initramfs range as a fallback. The DTB path below
@@ -50,6 +53,7 @@ void main(uint64_t dtb_addr)
     initramfs_set_range(initramfs_begin, initramfs_end);
 
     /* enter simple shell */
+    daif_unmask_irq();
     shell_run(fdt_error == FDT_SUCCESS ? &boot_fdt : NULL);
 }
 

@@ -11,6 +11,7 @@
 #include "power.h"
 #include "printf.h"
 #include "string.h"
+#include "timer.h"
 #include "types.h"
 
 /* Private types */
@@ -44,6 +45,9 @@ static void shell_clear_prompt_line(size_t buffer_length);
 
 /* Redraw the prompt and the buffered input line. */
 static void shell_redraw_prompt(const char *buffer);
+
+/* Print a timeout message without losing the current input line. */
+static void shell_print_timeout_message(const char *message, uint64_t current_seconds);
 
 /*
  * Read one line from Mini UART into buffer.
@@ -101,6 +105,9 @@ static void cmd_alloc(size_t argc, char *argv[]);
 /* Print devicetree and initramfs range information discovered at boot. */
 static void cmd_dtb(size_t argc, char *argv[]);
 
+/* Add a one-shot timeout with optional message and seconds arguments. */
+static void cmd_set_timeout(size_t argc, char *argv[]);
+
 /*
  * Load an EL0 user program from initramfs and enter it.
  *
@@ -113,6 +120,9 @@ static void cmd_svc(size_t argc, char *argv[]);
 #define SHELL_PROMPT "$ "
 
 static const fdt_t *shell_fdt;
+static char shell_line_buffer[CONFIG_SHELL_BUFFER_SIZE];
+static size_t shell_line_length;
+static bool shell_input_active;
 
 static const command_t commands[] = {
     {"help", "help [command]", "List commands or show help for one command", cmd_help},
@@ -124,6 +134,7 @@ static const command_t commands[] = {
     {"heap", "heap", "Print simple allocator state", cmd_heap},
     {"alloc", "alloc <bytes>", "Allocate bytes from the simple allocator", cmd_alloc},
     {"dtb", "dtb", "Print devicetree initramfs information", cmd_dtb},
+    {"setTimeout", "setTimeout [message] [seconds]", "Print a message after a timeout", cmd_set_timeout},
     {"svc", "svc [path]", "Run an EL0 user program from initramfs", cmd_svc},
 };
 
@@ -138,7 +149,6 @@ static const char *const shell_error_messages[] = {
 /* Function implementations */
 void shell_run(const fdt_t *fdt)
 {
-    char buffer[CONFIG_SHELL_BUFFER_SIZE];
     char *argv[CONFIG_SHELL_MAX_ARGS];
 
     shell_fdt = fdt;
@@ -150,13 +160,15 @@ void shell_run(const fdt_t *fdt)
 
         printf(SHELL_PROMPT);
 
-        error = shell_read_line(buffer, sizeof(buffer));
+        shell_input_active = true;
+        error = shell_read_line(shell_line_buffer, sizeof(shell_line_buffer));
+        shell_input_active = false;
         if (error != SHELL_SUCCESS) {
             shell_print_error(error);
             continue;
         }
 
-        error = shell_parse_args(buffer, argv, CONFIG_SHELL_MAX_ARGS, &argc);
+        error = shell_parse_args(shell_line_buffer, argv, CONFIG_SHELL_MAX_ARGS, &argc);
         if (error != SHELL_SUCCESS) {
             shell_print_error(error);
             continue;
@@ -207,22 +219,39 @@ static void shell_redraw_prompt(const char *buffer)
     printf(SHELL_PROMPT "%s", buffer);
 }
 
+static void shell_print_timeout_message(const char *message, uint64_t current_seconds)
+{
+    if (shell_input_active) {
+        shell_clear_prompt_line(shell_line_length);
+    }
+
+    printf("[Timeout at %u seconds since booting]: %s\n",
+           (unsigned int) current_seconds,
+           message);
+
+    if (shell_input_active) {
+        shell_redraw_prompt(shell_line_buffer);
+    }
+}
+
 static shell_error_t shell_read_line(char *buffer, size_t capacity)
 {
-    size_t buffer_length = 0;
+    shell_line_length = 0;
+    buffer[0] = '\0';
 
     while (true) {
         char c = mini_uart_getc();
 
         if (c == '\n') {
-            buffer[buffer_length] = '\0';
+            buffer[shell_line_length] = '\0';
             printf("\n");
             return SHELL_SUCCESS;
         }
 
         if (c == '\b' || c == 0x7f) {
-            if (buffer_length > 0) {
-                buffer_length--;
+            if (shell_line_length > 0) {
+                shell_line_length--;
+                buffer[shell_line_length] = '\0';
                 printf("\b \b");
             }
             continue;
@@ -232,15 +261,16 @@ static shell_error_t shell_read_line(char *buffer, size_t capacity)
             continue;
         }
 
-        if (buffer_length + 1 >= capacity) {
-            buffer[buffer_length] = '\0';
-            shell_clear_prompt_line(buffer_length);
+        if (shell_line_length + 1 >= capacity) {
+            buffer[shell_line_length] = '\0';
+            shell_clear_prompt_line(shell_line_length);
             shell_print_error(SHELL_ERROR_COMMAND_TOO_LONG);
             shell_redraw_prompt(buffer);
             continue;
         }
 
-        buffer[buffer_length++] = c;
+        buffer[shell_line_length++] = c;
+        buffer[shell_line_length] = '\0';
         printf("%c", c);
     }
 }
@@ -534,6 +564,33 @@ static void cmd_dtb(size_t argc, char *argv[])
 
     printf("initrd start: 0x%08X\n", (unsigned int) initramfs_begin);
     printf("initrd end  : 0x%08X\n", (unsigned int) initramfs_end);
+}
+
+static void cmd_set_timeout(size_t argc, char *argv[])
+{
+    const char *message = CONFIG_TIMER_DEFAULT_MESSAGE;
+    size_t seconds = CONFIG_TIMER_DEFAULT_TIMEOUT_SECONDS;
+
+    if (argc > 3) {
+        shell_print_usage(shell_find_command(argv[0]));
+        return;
+    }
+
+    if (argc >= 2) {
+        message = argv[1];
+    }
+
+    if (argc == 3 && !shell_parse_size(argv[2], &seconds)) {
+        printf("Invalid timeout seconds: %s\n", argv[2]);
+        return;
+    }
+
+    printf("<Timer>: current time: %u seconds since booting.\n",
+           (unsigned int) timer_current_seconds());
+
+    if (!timer_add_timeout((uint64_t) seconds, message, shell_print_timeout_message)) {
+        printf("Timer error: failed to add timeout.\n");
+    }
 }
 
 static void cmd_svc(size_t argc, char *argv[])

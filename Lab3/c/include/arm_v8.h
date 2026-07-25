@@ -9,6 +9,14 @@
 #define HCR_EL2_VALUE               HCR_EL2_RW_AARCH64
 
 /*
+ * CNTHCTL_EL2, Counter-timer Hypervisor Control Register.
+ * EL1PCTEN and EL1PCEN allow EL1 to access the physical counter/timer.
+ */
+#define CNTHCTL_EL2_EL1PCTEN        (1 << 0)
+#define CNTHCTL_EL2_EL1PCEN         (1 << 1)
+#define CNTHCTL_EL2_VALUE           (CNTHCTL_EL2_EL1PCTEN | CNTHCTL_EL2_EL1PCEN)
+
+/*
  * SPSR_EL2, Saved Program Status Register (EL2).
  * M[3:0] = 0101 means returning to EL1h.
  * D/A/I/F mask debug, SError, IRQ and FIQ while entering EL1.

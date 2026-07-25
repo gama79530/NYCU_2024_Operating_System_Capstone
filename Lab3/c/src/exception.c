@@ -2,6 +2,7 @@
 
 #include "printf.h"
 #include "task_queue.h"
+#include "timer.h"
 
 /* Private types */
 
@@ -134,6 +135,12 @@ static void dispatch_sync_exception(exception_frame_t *frame, exception_origin_t
 
 static void dispatch_irq_exception(exception_origin_t origin)
 {
+    if (timer_irq_pending()) {
+        timer_handle_irq();
+        task_queue_run();
+        return;
+    }
+
     printf("Unhandled IRQ from %s\n", exception_origin_name(origin));
     task_queue_run();
 }

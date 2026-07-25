@@ -108,4 +108,12 @@
 #define PM_RSTS (PM_BASE + 0x00000020)
 #define PM_WDOG (PM_BASE + 0x00000024)
 
+/*****************************************************************************************
+ * Core local interrupt controller
+ *****************************************************************************************/
+#define CORE_TIMER_IRQ_CTRL_CNTPNSIRQ (1 << 1)
+
+#define CORE0_TIMER_IRQ_CTRL 0x40000040
+#define CORE0_IRQ_SOURCE     0x40000060
+
 #endif

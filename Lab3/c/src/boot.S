@@ -61,6 +61,12 @@ setup_el2_to_el1:
     ldr     x0, =HCR_EL2_VALUE
     msr     hcr_el2, x0
 
+    // Allow EL1 to access the physical counter and timer registers.
+    mrs     x0, cnthctl_el2
+    ldr     x1, =CNTHCTL_EL2_VALUE
+    orr     x0, x0, x1
+    msr     cnthctl_el2, x0
+
     // Return to EL1h with DAIF masked.
     ldr     x0, =SPSR_EL2_VALUE
     msr     spsr_el2, x0

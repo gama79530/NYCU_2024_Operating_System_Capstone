@@ -68,6 +68,28 @@
 #error "CONFIG_TASK_QUEUE_MAX_TASKS must be at least 1"
 #endif
 
+/* timer.c */
+#define CONFIG_TIMER_MAX_EVENTS 64
+/*
+ * Keep timer_event_t at 128 bytes on AArch64:
+ * list_head_t(16) + expires_at(8) + callback(8) + message(96).
+ */
+#define CONFIG_TIMER_MESSAGE_SIZE 96
+#define CONFIG_TIMER_DEFAULT_TIMEOUT_SECONDS 2
+#define CONFIG_TIMER_DEFAULT_MESSAGE "timeout"
+
+#if CONFIG_TIMER_MAX_EVENTS < 1
+#error "CONFIG_TIMER_MAX_EVENTS must be at least 1"
+#endif
+
+#if CONFIG_TIMER_MESSAGE_SIZE < 1
+#error "CONFIG_TIMER_MESSAGE_SIZE must be at least 1"
+#endif
+
+#if CONFIG_TIMER_DEFAULT_TIMEOUT_SECONDS < 1
+#error "CONFIG_TIMER_DEFAULT_TIMEOUT_SECONDS must be at least 1"
+#endif
+
 /* EL0 SVC demo */
 #define CONFIG_EL0_USER_ENTRY 0x00020000UL
 #define CONFIG_EL0_USER_STACK 0x00022000UL
