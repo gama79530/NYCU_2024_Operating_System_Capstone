@@ -7,12 +7,14 @@
 /* Private types */
 
 /* Private constants */
+
 #define ESR_EL1_EC_SHIFT 26
 #define ESR_EL1_EC_MASK  0x3f
 #define ESR_EL1_EC_SVC64 0x15
 #define ESR_EL1_ISS_MASK 0x01ffffff
 
 /* Private function declarations */
+
 /* Read the syndrome register for the exception currently being handled. */
 static uint64_t read_esr_el1(void);
 
@@ -55,6 +57,7 @@ static void handle_serror_exception(exception_origin_t origin);
 /* Private data */
 
 /* Function implementations */
+
 static uint64_t read_esr_el1(void)
 {
     uint64_t value;

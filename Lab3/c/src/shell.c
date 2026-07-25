@@ -15,6 +15,7 @@
 #include "types.h"
 
 /* Private types */
+
 typedef void (*command_handler_t)(size_t argc, char *argv[]);
 
 typedef struct {
@@ -31,6 +32,7 @@ typedef enum {
 } shell_error_t;
 
 /* Private function declarations */
+
 /* Convert a shell_error_t value into a user-facing error message. */
 static const char *shell_error_string(shell_error_t error);
 
@@ -78,6 +80,7 @@ static void shell_print_usage(const command_t *command);
 static void shell_dispatch(size_t argc, char *argv[]);
 
 /* Private command declarations */
+
 /* Print command help or the usage/details for one command. */
 static void cmd_help(size_t argc, char *argv[]);
 
@@ -117,6 +120,7 @@ static void cmd_set_timeout(size_t argc, char *argv[]);
 static void cmd_svc(size_t argc, char *argv[]);
 
 /* Private data */
+
 #define SHELL_PROMPT "$ "
 
 static const fdt_t *shell_fdt;
@@ -147,6 +151,7 @@ static const char *const shell_error_messages[] = {
 #define SHELL_ERROR_COUNT (sizeof(shell_error_messages) / sizeof(shell_error_messages[0]))
 
 /* Function implementations */
+
 void shell_run(const fdt_t *fdt)
 {
     char *argv[CONFIG_SHELL_MAX_ARGS];

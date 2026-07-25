@@ -6,6 +6,7 @@
 #include "util.h"
 
 /* Private constants */
+
 #define FDT_MAGIC 0xD00DFEEDU
 
 /*
@@ -83,6 +84,7 @@
 #define FDT_TRAVERSE_STOP ((fdt_error_t) 1)
 
 /* Private types */
+
 typedef struct {
     const char *path;
     const char *name;
@@ -110,6 +112,7 @@ typedef struct {
 typedef fdt_error_t (*fdt_callback_t)(const fdt_traverse_item_t *item, void *context);
 
 /* Private function declarations */
+
 /* Read one big-endian 32-bit word from the structure block and advance cursor. */
 static bool fdt_read_u32(const uint8_t **cursor, const uint8_t *limit, uint32_t *value);
 
@@ -154,6 +157,7 @@ static bool fdt_path_ends_at_depth(const char *path, int depth);
 static const char *fdt_string_at(const fdt_t *fdt, uint32_t offset);
 
 /* Private data */
+
 static const char *const fdt_error_messages[] = {
     "Invalid argument.",      "Invalid FDT magic.",      "FDT data is out of range.",
     "Invalid FDT structure.", "FDT property not found.",
@@ -162,6 +166,7 @@ static const char *const fdt_error_messages[] = {
 #define FDT_ERROR_COUNT (sizeof(fdt_error_messages) / sizeof(fdt_error_messages[0]))
 
 /* Function implementations */
+
 const char *fdt_error_string(fdt_error_t error)
 {
     if (error >= FDT_SUCCESS) {

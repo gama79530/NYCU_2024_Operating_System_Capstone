@@ -6,6 +6,7 @@
 /* Private types */
 
 /* Private function declarations */
+
 /* Read one raw byte from Mini UART, blocking until RX data is ready. */
 static char mini_uart_getb(void);
 
@@ -15,6 +16,7 @@ static void mini_uart_putb(char c);
 /* Private data */
 
 /* Function implementations */
+
 void mini_uart_init(void)
 {
     uint32_t selector;

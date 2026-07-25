@@ -9,6 +9,7 @@
 /* Private types */
 
 /* Private function declarations */
+
 /*
  * Send a mailbox property request and wait for the matching response.
  *
@@ -21,6 +22,7 @@ static mailbox_error_t mailbox_property_call(volatile uint32_t *buffer);
 static mailbox_error_t mailbox_validate_tag(volatile uint32_t *buffer, uint32_t value_size);
 
 /* Private constants */
+
 /*
  * Mailbox property interface
  * ref: https://github.com/raspberrypi/firmware/wiki/Mailbox-property-interface
@@ -87,6 +89,7 @@ static mailbox_error_t mailbox_validate_tag(volatile uint32_t *buffer, uint32_t 
 #define MAILBOX_ERROR_COUNT (sizeof(mailbox_error_messages) / sizeof(mailbox_error_messages[0]))
 
 /* Private data */
+
 /* The current single-core kernel serializes access to this shared buffer. */
 static volatile uint32_t mailbox_buffer[MAILBOX_BUFFER_WORDS] __attribute__((aligned(16)));
 
@@ -99,6 +102,7 @@ static const char *const mailbox_error_messages[] = {
 };
 
 /* Function implementations */
+
 mailbox_error_t mailbox_get_board_revision(uint32_t *revision)
 {
     mailbox_error_t error;

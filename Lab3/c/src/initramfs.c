@@ -8,6 +8,7 @@
 /* Private types */
 
 /* Private constants */
+
 #define CPIO_NEWC_MAGIC "070701"
 #define CPIO_NEWC_HEADER_SIZE 110
 #define CPIO_NEWC_FIELD_SIZE 8
@@ -31,6 +32,7 @@
  */
 
 /* Private function declarations */
+
 /* Return true when [begin, begin + size) is inside the active archive range. */
 static bool range_contains(uintptr_t begin, uintptr_t size);
 
@@ -38,6 +40,7 @@ static bool range_contains(uintptr_t begin, uintptr_t size);
 static bool read_hex_field(const uint8_t *cursor, size_t offset, size_t *value);
 
 /* Private data */
+
 static uintptr_t initramfs_range_begin;
 static uintptr_t initramfs_range_end;
 
@@ -52,6 +55,7 @@ static const char *const initramfs_error_messages[] = {
     (sizeof(initramfs_error_messages) / sizeof(initramfs_error_messages[0]))
 
 /* Function implementations */
+
 void initramfs_set_range(uintptr_t begin, uintptr_t end)
 {
     initramfs_range_begin = begin;

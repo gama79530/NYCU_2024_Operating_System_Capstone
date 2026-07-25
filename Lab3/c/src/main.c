@@ -12,6 +12,7 @@
 /* Private types */
 
 /* Public function declarations */
+
 /*
  * Kernel C entry point after early assembly boot.
  *
@@ -21,13 +22,16 @@
 void main(uint64_t dtb_addr);
 
 /* Private function declarations */
+
 /* Bridge the printf library's putc callback to mini UART output. */
 static void printf_putc(void *context, char c);
 
 /* Private data */
+
 static fdt_t boot_fdt;
 
 /* Function implementations */
+
 void main(uint64_t dtb_addr)
 {
     fdt_error_t fdt_error;

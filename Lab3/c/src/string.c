@@ -3,12 +3,14 @@
 /* Private types */
 
 /* Private function declarations */
+
 /* Convert one ASCII hex digit into its numeric value. */
 static bool char_to_digit(char c, unsigned int *digit);
 
 /* Private data */
 
 /* Function implementations */
+
 int strcmp(const char *lhs, const char *rhs)
 {
     while (*lhs != '\0' && *lhs == *rhs) {

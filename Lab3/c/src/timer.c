@@ -9,6 +9,7 @@
 #include "util.h"
 
 /* Private types */
+
 typedef struct timer_event {
     list_head_t anchor;
     uint64_t expires_at;
@@ -55,6 +56,7 @@ static void timer_program_next_event(void);
 static bool timer_seconds_to_ticks(uint64_t seconds, uint64_t *ticks);
 
 /* Private data */
+
 static LIST_HEAD(waiting_events);
 static LIST_HEAD(free_events);
 static size_t allocated_count;
