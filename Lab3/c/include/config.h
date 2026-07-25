@@ -68,4 +68,9 @@
 #error "CONFIG_TASK_QUEUE_MAX_TASKS must be at least 1"
 #endif
 
+/* EL0 SVC demo */
+#define CONFIG_EL0_USER_ENTRY 0x00020000UL
+#define CONFIG_EL0_USER_STACK 0x00022000UL
+#define CONFIG_EL0_USER_IMAGE "user.img"
+
 #endif

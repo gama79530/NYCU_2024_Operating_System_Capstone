@@ -2,6 +2,7 @@
 
 #include "allocator.h"
 #include "config.h"
+#include "el.h"
 #include "error.h"
 #include "fdt.h"
 #include "initramfs.h"
@@ -48,6 +49,7 @@ static void cmd_cat(size_t argc, char *argv[]);
 static void cmd_heap(size_t argc, char *argv[]);
 static void cmd_alloc(size_t argc, char *argv[]);
 static void cmd_dtb(size_t argc, char *argv[]);
+static void cmd_svc(size_t argc, char *argv[]);
 
 /* Private data */
 static const fdt_t *shell_fdt;
@@ -62,6 +64,7 @@ static const command_t commands[] = {
     {"heap", "heap", "Print simple allocator state", cmd_heap},
     {"alloc", "alloc <bytes>", "Allocate bytes from the simple allocator", cmd_alloc},
     {"dtb", "dtb", "Print devicetree initramfs information", cmd_dtb},
+    {"svc", "svc [path]", "Run an EL0 user program from initramfs", cmd_svc},
 };
 
 static const char *const shell_error_messages[] = {
@@ -451,4 +454,48 @@ static void cmd_dtb(size_t argc, char *argv[])
 
     printf("initrd start: 0x%08X\n", (unsigned int) initramfs_begin);
     printf("initrd end  : 0x%08X\n", (unsigned int) initramfs_end);
+}
+
+static void cmd_svc(size_t argc, char *argv[])
+{
+    const char *path = CONFIG_EL0_USER_IMAGE;
+    const uint8_t *cursor;
+    initramfs_file_t file;
+    initramfs_error_t error;
+    uint8_t *entry = (uint8_t *) CONFIG_EL0_USER_ENTRY;
+
+    if (argc > 2) {
+        shell_print_usage(shell_find_command(argv[0]));
+        return;
+    }
+
+    if (argc == 2) {
+        path = argv[1];
+    }
+
+    cursor = initramfs_begin();
+    while ((error = initramfs_next(&cursor, &file)) == INITRAMFS_SUCCESS) {
+        if (!initramfs_path_matches(path, file.name)) {
+            continue;
+        }
+
+        for (size_t i = 0; i < file.size; i++) {
+            entry[i] = file.data[i];
+        }
+
+        printf("Loaded %s to 0x%08X (%u bytes)\n",
+               path,
+               (unsigned int) CONFIG_EL0_USER_ENTRY,
+               (unsigned int) file.size);
+        printf("Entering EL0 user program.\n");
+        el_enter_el0(CONFIG_EL0_USER_ENTRY, CONFIG_EL0_USER_STACK);
+        return;
+    }
+
+    if (error != INITRAMFS_END) {
+        printf("Initramfs error: %s\n", initramfs_error_string(error));
+        return;
+    }
+
+    printf("File not found: %s\n", path);
 }

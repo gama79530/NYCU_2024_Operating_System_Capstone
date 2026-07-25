@@ -8,6 +8,8 @@
 #define ESR_EL1_EC_SVC64 0x15
 #define ESR_EL1_ISS_MASK 0x01ffffff
 
+static const char *exception_origin_name(exception_origin_t origin);
+
 static uint64_t read_esr_el1(void)
 {
     uint64_t value;
@@ -18,14 +20,32 @@ static uint64_t read_esr_el1(void)
 
 static void print_u64_hex(uint64_t value)
 {
-    printf("0x%x%08x", (uint32_t) (value >> 32), (uint32_t) value);
+    uint32_t high = (uint32_t) (value >> 32);
+    uint32_t low = (uint32_t) value;
+
+    if (high == 0) {
+        printf("0x%x", low);
+        return;
+    }
+
+    printf("0x%x%08x", high, low);
 }
 
-static void handle_svc_exception(exception_frame_t *frame, uint64_t esr)
+static void handle_svc_demo(exception_frame_t *frame, exception_origin_t origin, uint64_t esr)
 {
-    printf("SVC #%u from EL0: x0 = %u\n",
+    printf("SVC #%u from %s: x0 = %u\n",
            (uint32_t) (esr & ESR_EL1_ISS_MASK),
+           exception_origin_name(origin),
            (uint32_t) frame->regs[0]);
+    printf("SPSR_EL1 = ");
+    print_u64_hex(frame->spsr_el1);
+    printf("\n");
+    printf("ELR_EL1  = ");
+    print_u64_hex(frame->elr_el1);
+    printf("\n");
+    printf("ESR_EL1  = ");
+    print_u64_hex(esr);
+    printf("\n");
 }
 
 static const char *exception_origin_name(exception_origin_t origin)
@@ -61,7 +81,7 @@ static void dispatch_sync_exception(exception_frame_t *frame, exception_origin_t
     uint64_t ec = (esr >> ESR_EL1_EC_SHIFT) & ESR_EL1_EC_MASK;
 
     if (ec == ESR_EL1_EC_SVC64) {
-        handle_svc_exception(frame, esr);
+        handle_svc_demo(frame, origin, esr);
         return;
     }
 

@@ -30,7 +30,7 @@ EL2 -> EL1 kernel
 | Dispatcher | C dispatcher 讀 `ESR_EL1` 和 interrupt pending registers，判斷事件來源 | `exception.c`, `peripheral.h` |
 | Task queue | 提供 interrupt handler 延後執行工作的 priority queue，讓 IRQ path 維持短小 | `task_queue.*`, `exception.c` |
 | User program artifact | 建置 spec 提供的 EL0 測試程式，產生可放進 initramfs 的 `user.img` | `Lab3/user/` |
-| EL0 SVC demo | 從 initramfs 載入 `user.img`，切到 EL0，處理 user program 的 `svc` | `shell.c`, `exception.*` |
+| EL0 SVC demo | 從 initramfs 載入 `user.img`，切到 EL0，處理 user program 的 `svc` | `shell.c`, `el.*`, `exception.*` |
 | Core timer IRQ | 啟用 physical timer，將 timer IRQ 接到同一個 dispatcher | `timer.*`, `exception.c` |
 | UART IRQ | 啟用 Mini UART RX/TX IRQ，改用 buffer 做 async I/O | `mini_uart.*`, `exception.c` |
 | Timer queue | 用 one-shot core timer multiplex 多個 software timer | `timer.*`, `shell.c` |
@@ -41,12 +41,11 @@ EL2 -> EL1 kernel
 2. 先加入 `Lab3/user/`：把 spec 提供的 EL0 測試程式整理成可建置的 `user.img`；後面的 EL0 SVC demo 會把它放進 initramfs 後載入執行。
 3. 在 early boot 加入 EL2 to EL1，確認 kernel 在 EL1h 執行。
 4. 建立 exception core：vector table、context save/restore、C dispatcher、basic priority task queue。
-5. 接上 EL0 SVC demo：從 initramfs 載入 `user.img` 到 `0x20000`，設定 `SP_EL0`，用 `eret` 進 EL0。
-6. 讓 SVC handler 印 `SPSR_EL1`、`ELR_EL1`、`ESR_EL1`，並 `eret` 回 user program。
-7. 接 core timer IRQ，先用同一個 exception core enqueue timer task 並印 boot seconds。
-8. 接 Mini UART IRQ，建立 RX/TX buffer 和 async I/O。
-9. 在 advanced 部分擴充 nested interrupt、priority/preemption。
-10. 最後用 one-shot timer queue 實作 `setTimeout MESSAGE SECONDS`。
+5. 接上 EL0 SVC demo：從 initramfs 載入 `user.img` 到 `0x20000`，設定 `SP_EL0`，用 `eret` 進 EL0，並在 SVC handler 印 `SPSR_EL1`、`ELR_EL1`、`ESR_EL1`。
+6. 接 core timer IRQ，先用同一個 exception core enqueue timer task 並印 boot seconds。
+7. 接 Mini UART IRQ，建立 RX/TX buffer 和 async I/O。
+8. 在 advanced 部分擴充 nested interrupt、priority/preemption。
+9. 最後用 one-shot timer queue 實作 `setTimeout MESSAGE SECONDS`。
 
 ## User Program Artifact
 
@@ -75,8 +74,6 @@ make -C Lab3/user
 make -C Lab3/user deploy
 make -C BootLoader initramfs
 ```
-
-`user.img` 是建置產物，不需要 commit；commit source 即可。
 
 ## EL Setup
 
@@ -264,16 +261,17 @@ mov x0, 0
 
 1. kernel 可以從 EL1 `eret` 到 EL0。
 2. EL0 執行 `svc` 會回到 EL1 vector table。
-3. handler 可以保存 context，呼叫 C code 印 registers，再 `eret` 回 EL0。
+3. handler 可以保存 context，呼叫 C code 印 `SPSR_EL1`、`ELR_EL1`、`ESR_EL1`，再 `eret` 回 EL0。
 4. `x0` 不會被 handler 破壞，因此 user program 可以累加到 5。
 
-User program 目前放在 `Lab3/user/`，link address 是 `0x20000`。shell command 可以從
-initramfs 載入 `user.img`：
+User program 目前放在 `Lab3/user/`，link address 是 `0x20000`。shell command `svc`
+預設會從 initramfs 載入 `user.img`，也可以用 `svc [path]` 指定其他檔名：
 
 ```text
 svc [path]
     -> find user.img in initramfs
     -> copy image to 0x20000
+    -> call el_enter_el0(entry, stack)
     -> set SPSR_EL1 to EL0t with DAIF masked
     -> set ELR_EL1 to 0x20000
     -> set SP_EL0 to 0x22000
@@ -409,9 +407,15 @@ EL0 SVC demo：
 $ svc
 Loaded user.img to 0x00020000 (...)
 Entering EL0 user program.
-SVC #0 from EL0: x0 = 1
+SVC #0 from lower_aarch64: x0 = 1
+SPSR_EL1 = 0x3c0
+ELR_EL1  = 0x2000c
+ESR_EL1  = 0x56000000
 ...
-SVC #0 from EL0: x0 = 5
+SVC #0 from lower_aarch64: x0 = 5
+SPSR_EL1 = 0x800003c0
+ELR_EL1  = 0x2000c
+ESR_EL1  = 0x56000000
 ```
 
 若使用共用 UART bootloader 上傳 actual kernel：
