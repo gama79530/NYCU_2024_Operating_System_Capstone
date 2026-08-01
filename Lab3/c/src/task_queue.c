@@ -2,7 +2,7 @@
 
 #include "allocator.h"
 #include "config.h"
-#include "exception.h"
+#include "daif.h"
 #include "list.h"
 #include "util.h"
 
@@ -28,6 +28,8 @@ static void task_free(task_node_t *task);
 static LIST_HEAD(pending_queue);
 static LIST_HEAD(free_queue);
 static size_t allocated_count;
+static bool task_running;
+static task_priority_t current_task_priority;
 
 /* Function implementations */
 
@@ -103,10 +105,28 @@ void task_queue_run(void)
         task_node_t *task = container_of(pending_queue.next, task_node_t, anchor);
         task_callback_t callback = task->callback;
         void *data = task->data;
+        task_priority_t priority = task->priority;
+        bool previous_task_running;
+        task_priority_t previous_priority;
+
+        /* A nested IRQ may only preempt the active task with a higher-priority task. */
+        if (task_running && priority >= current_task_priority) {
+            return;
+        }
 
         list_remove(&task->anchor);
         task_free(task);
 
+        previous_task_running = task_running;
+        previous_priority = current_task_priority;
+        task_running = true;
+        current_task_priority = priority;
+
+        daif_irq_enable();
         callback(data);
+        daif_irq_disable();
+
+        task_running = previous_task_running;
+        current_task_priority = previous_priority;
     }
 }

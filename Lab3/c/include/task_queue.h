@@ -7,7 +7,8 @@ typedef void (*task_callback_t)(void *data);
 
 typedef enum {
     TASK_PRIORITY_TIMER = 0,
-    TASK_PRIORITY_UART = 1,
+    TASK_PRIORITY_UART_RX = 1,
+    TASK_PRIORITY_UART_TX = 2,
 } task_priority_t;
 
 /*
@@ -17,7 +18,12 @@ typedef enum {
  */
 bool task_queue_push(task_priority_t priority, task_callback_t callback, void *data);
 
-/* Run all currently queued deferred tasks. */
+/*
+ * Run queued tasks with IRQ enabled.
+ *
+ * A nested invocation only runs tasks whose priority is higher than the task
+ * it interrupted. The outer invocation resumes the remaining queue afterward.
+ */
 void task_queue_run(void);
 
 #endif

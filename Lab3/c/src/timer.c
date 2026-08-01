@@ -2,7 +2,7 @@
 
 #include "allocator.h"
 #include "config.h"
-#include "exception.h"
+#include "daif.h"
 #include "list.h"
 #include "peripheral.h"
 #include "string.h"
@@ -87,6 +87,7 @@ void timer_handle_irq(void)
 bool timer_add_timeout(uint64_t seconds, const char *message, timer_callback_t callback)
 {
     timer_event_t *event;
+    daif_irq_state_t daif_state;
     uint64_t now;
     uint64_t duration;
 
@@ -103,11 +104,11 @@ bool timer_add_timeout(uint64_t seconds, const char *message, timer_callback_t c
         return false;
     }
 
-    daif_mask_irq();
+    daif_state = daif_irq_save();
 
     event = timer_alloc_event();
     if (event == NULL) {
-        daif_unmask_irq();
+        daif_irq_restore(daif_state);
         return false;
     }
 
@@ -117,7 +118,7 @@ bool timer_add_timeout(uint64_t seconds, const char *message, timer_callback_t c
 
     if (!timer_insert_event(event)) {
         timer_free_event(event);
-        daif_unmask_irq();
+        daif_irq_restore(daif_state);
         return false;
     }
 
@@ -125,7 +126,7 @@ bool timer_add_timeout(uint64_t seconds, const char *message, timer_callback_t c
         timer_program_next_event();
     }
 
-    daif_unmask_irq();
+    daif_irq_restore(daif_state);
     return true;
 }
 
@@ -246,9 +247,9 @@ static void timer_run_expired_events(void)
 
         list_remove(&event->anchor);
 
-        daif_unmask_irq();
+        daif_irq_enable();
         event->callback(event->message, timer_current_seconds());
-        daif_mask_irq();
+        daif_irq_disable();
 
         timer_free_event(event);
     }

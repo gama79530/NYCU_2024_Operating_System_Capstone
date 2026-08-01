@@ -1,8 +1,8 @@
 #include "allocator.h"
 #include "config.h"
-#include "exception.h"
 #include "fdt.h"
 #include "initramfs.h"
+#include "daif.h"
 #include "mini_uart.h"
 #include "printf.h"
 #include "shell.h"
@@ -57,7 +57,12 @@ void main(uint64_t dtb_addr)
     initramfs_set_range(initramfs_begin, initramfs_end);
 
     /* enter simple shell */
-    daif_unmask_irq();
+    mini_uart_enable_async();
+    /*
+     * Lab3 only implements source handling and nesting policy for IRQ.
+     * Keep Debug, SError, and FIQ masked until they have complete handlers.
+     */
+    daif_irq_enable();
     shell_run(fdt_error == FDT_SUCCESS ? &boot_fdt : NULL);
 }
 

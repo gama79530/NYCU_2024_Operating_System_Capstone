@@ -15,10 +15,6 @@
 
 #include "types.h"
 
-#define daif_mask_all()   asm volatile("msr daifset, #0xf" ::: "memory")
-#define daif_unmask_irq() asm volatile("msr daifclr, #0x2" ::: "memory")
-#define daif_mask_irq()   asm volatile("msr daifset, #0x2" ::: "memory")
-
 typedef enum {
     EXCEPTION_CLASS_SYNC = EXCEPTION_CLASS_SYNC_VALUE,
     EXCEPTION_CLASS_IRQ = EXCEPTION_CLASS_IRQ_VALUE,

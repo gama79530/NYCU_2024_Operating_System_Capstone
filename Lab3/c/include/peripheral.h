@@ -83,6 +83,17 @@
 #define AUX_SPI1_IO (AUX_BASE + 0x000000D0)
 #define AUX_SPI1_PEEK (AUX_BASE + 0x000000D4)
 
+#define AUX_IRQ_MINI_UART        (1 << 0)
+#define AUX_MU_IER_RX            (1 << 0)
+#define AUX_MU_IER_TX            (1 << 1)
+#define AUX_MU_IIR_NO_INTERRUPT  (1 << 0)
+#define AUX_MU_IIR_ID_MASK       (3 << 1)
+#define AUX_MU_IIR_ID_TX         (1 << 1)
+#define AUX_MU_IIR_ID_RX         (2 << 1)
+#define AUX_MU_IIR_ID_RX_TIMEOUT (3 << 1)
+#define AUX_MU_LSR_DATA_READY    (1 << 0)
+#define AUX_MU_LSR_TX_READY      (1 << 5)
+
 /*****************************************************************************************
  * MAILBOX
  * ref: https://github.com/raspberrypi/firmware/wiki/Mailbox-property-interface
@@ -115,5 +126,15 @@
 
 #define CORE0_TIMER_IRQ_CTRL 0x40000040
 #define CORE0_IRQ_SOURCE     0x40000060
+
+/*****************************************************************************************
+ * BCM2837 interrupt controller
+ *****************************************************************************************/
+#define IRQ_BASE (MMIO_BASE + 0x0000B000)
+
+#define IRQ_PENDING_1 (IRQ_BASE + 0x00000204)
+#define ENABLE_IRQS_1 (IRQ_BASE + 0x00000210)
+
+#define IRQ_AUX (1 << 29)
 
 #endif

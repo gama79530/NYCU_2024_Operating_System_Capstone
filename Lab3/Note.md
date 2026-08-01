@@ -358,16 +358,18 @@ timeout callback 會先清掉目前 shell prompt line，印出 timeout 訊息，
 Mini UART interrupt 的重點是把 polling I/O 改成 buffered async I/O。它仍然掛在同一個
 exception dispatcher 下：
 
-```text
-UART RX ready
-    -> IRQ
-    -> dispatcher checks AUX pending/source
-    -> RX handler copies byte into read buffer
-
-UART TX ready
-    -> IRQ
-    -> dispatcher checks AUX pending/source
-    -> TX handler drains write buffer
+```mermaid
+flowchart TD
+    IRQ[EL1 IRQ entry] --> Source{IRQ source}
+    Source -->|Core physical timer| Timer[timer_handle_irq]
+    Source -->|BCM AUX IRQ| IIR{AUX_MU_IIR}
+    IIR -->|RX / RX timeout| MaskRX[Mask Mini UART RX source]
+    IIR -->|TX empty| MaskTX[Mask Mini UART TX source]
+    MaskRX --> QueueRX[Enqueue UART RX task]
+    MaskTX --> QueueTX[Enqueue UART TX task]
+    QueueRX --> Run[task_queue_run with IRQ enabled]
+    QueueTX --> Run
+    Run --> Restore[Restore frame and eret]
 ```
 
 需要設定：
@@ -377,8 +379,24 @@ UART TX ready
 | Mini UART | `AUX_MU_IER` | enable RX/TX interrupt |
 | BCM peripheral IRQ | `ENABLE_IRQS1` at `0x3f00b210` | set bit 29 for AUX interrupt |
 
-Buffer 操作要保護 critical section。簡單作法是在操作 RX/TX buffer 前暫時 mask 對應 IRQ，
-操作完再打開。
+RX/TX 各使用 256-byte power-of-two ring storage。head 和 tail 相同代表 empty，因此保留
+一格區分 full，實際可存 255 bytes。初始化時只開 RX interrupt；有資料寫進 TX buffer 時
+才開 TX interrupt，TX task 排空 buffer 後再關閉，避免 TX-ready 產生 continuous IRQ。
+
+```mermaid
+flowchart LR
+    HardwareRX[Mini UART RX FIFO] -->|RX task drains bytes| RXBuffer[RX ring buffer]
+    RXBuffer -->|mini_uart_getc| Shell[Shell]
+    Shell -->|printf / mini_uart_putc| TXBuffer[TX ring buffer]
+    TXBuffer -->|TX task drains bytes| HardwareTX[Mini UART TX FIFO]
+```
+
+Ring buffer 的 foreground 操作會用 `daif_irq_save()` 保存 `DAIF` 並 mask IRQ，完成後再用
+`daif_irq_restore()` 恢復原本的 IRQ mask 狀態，不能無條件 unmask。IRQ entry 則先關閉觸發
+事件的 `AUX_MU_IER` source，再把 RX/TX
+工作放進 task queue；task 完成資料搬移後才重新開啟仍需要的 device source。若 TX buffer
+已滿且當下 CPU IRQ 原本就是 masked，write path 會直接等待硬體 TX ready 並送出一格，
+避免因無法進入 TX IRQ handler 而 deadlock。
 
 ## IRQ Priority and Nesting Policy
 
@@ -407,15 +425,18 @@ class 尚未建立 queue、handler 和 priority policy，因此先保持 masked�
 為了 nested IRQ 正確，exception frame 必須保存 `SPSR_EL1` 和 `ELR_EL1`，否則內層
 interrupt 會覆蓋外層 return state。
 
-Priority task queue 可以先用「priority + FIFO」：
+Priority task queue 使用「priority + FIFO」：
 
 ```text
 lower priority value => higher priority
-timer task priority < UART task priority
+timer task < UART RX task < UART TX task
 ```
 
-回到前一層 handler 前可以檢查是否有更高 priority task，若有則先執行它，形成簡單
-preemption。
+RX 的 priority 高於 TX，因為 RX FIFO 若沒有及時排空可能遺失輸入，而 TX 可以等待硬體
+繼續送出。`task_queue_run()` 會記錄目前執行中的 priority；nested IRQ 加入 task 後，只有
+數值更小的 task 可以立即 preempt，同 priority 或較低 priority 的 task 留給外層 invocation
+繼續處理。目前 timer expiration callback 依 Step 6 的設計直接由 timer handler 消化，沒有
+重複 enqueue；`TASK_PRIORITY_TIMER` 保留給之後需要把較重 timer work deferred 時使用。
 
 ## Build and Run
 

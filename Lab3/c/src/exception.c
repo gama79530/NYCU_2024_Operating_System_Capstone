@@ -1,5 +1,6 @@
 #include "exception.h"
 
+#include "mini_uart.h"
 #include "printf.h"
 #include "task_queue.h"
 #include "timer.h"
@@ -138,13 +139,22 @@ static void dispatch_sync_exception(exception_frame_t *frame, exception_origin_t
 
 static void dispatch_irq_exception(exception_origin_t origin)
 {
+    bool handled = false;
+
     if (timer_irq_pending()) {
         timer_handle_irq();
-        task_queue_run();
-        return;
+        handled = true;
     }
 
-    printf("Unhandled IRQ from %s\n", exception_origin_name(origin));
+    if (mini_uart_irq_pending()) {
+        mini_uart_handle_irq();
+        handled = true;
+    }
+
+    if (!handled) {
+        printf("Unhandled IRQ from %s\n", exception_origin_name(origin));
+    }
+
     task_queue_run();
 }
 

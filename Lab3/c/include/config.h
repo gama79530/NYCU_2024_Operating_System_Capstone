@@ -90,6 +90,27 @@
 #error "CONFIG_TIMER_DEFAULT_TIMEOUT_SECONDS must be at least 1"
 #endif
 
+/* mini_uart.c */
+/* Power-of-two ring storage; one slot remains unused to distinguish full from empty. */
+#define CONFIG_MINI_UART_RX_BUFFER_SIZE 256
+#define CONFIG_MINI_UART_TX_BUFFER_SIZE 256
+
+#if CONFIG_MINI_UART_RX_BUFFER_SIZE < 2
+#error "CONFIG_MINI_UART_RX_BUFFER_SIZE must be at least 2"
+#endif
+
+#if (CONFIG_MINI_UART_RX_BUFFER_SIZE & (CONFIG_MINI_UART_RX_BUFFER_SIZE - 1)) != 0
+#error "CONFIG_MINI_UART_RX_BUFFER_SIZE must be a power of two"
+#endif
+
+#if CONFIG_MINI_UART_TX_BUFFER_SIZE < 2
+#error "CONFIG_MINI_UART_TX_BUFFER_SIZE must be at least 2"
+#endif
+
+#if (CONFIG_MINI_UART_TX_BUFFER_SIZE & (CONFIG_MINI_UART_TX_BUFFER_SIZE - 1)) != 0
+#error "CONFIG_MINI_UART_TX_BUFFER_SIZE must be a power of two"
+#endif
+
 /* EL0 SVC demo */
 #define CONFIG_EL0_USER_ENTRY 0x00020000UL
 #define CONFIG_EL0_USER_STACK 0x00022000UL
