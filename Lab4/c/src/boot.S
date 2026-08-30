@@ -38,7 +38,7 @@ _start:
 // Continue booting once execution is already in EL1.
 el1_entry:
     // The stack grows downward from the kernel load address.
-    ldr     x0, =_start
+    ldr     x0, =kernel_stack_top
     mov     sp, x0
 
     // Install the EL1 exception vector table before entering C code.

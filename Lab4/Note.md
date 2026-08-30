@@ -31,19 +31,21 @@ exercise 與三個 advanced exercise；這裡將 Buddy System 與 Efficient Page
 
 | 資料結構 | 用途 |
 | --- | --- |
-| page frame array | 與實體 page frame 一對一對應，記錄每一頁的狀態與 order |
-| free list per order | 保存各 order 可直接配置的 block |
-| list node in frame entry | 讓 allocator 能在常數時間內插入或移除 free block |
+| singleton buddy metadata | 集中保存 managed range、frame array 與各 order free area |
+| 1-byte frame array | 以 2-bit state 與 6-bit order 記錄每個實體 page frame |
+| free area per order | 保存 free-list head 與 free-block count |
+| list node in free page | 使用 free block 的開頭保存 list node，不擴大 per-frame metadata |
 
 建議實作步驟：
 
-1. 定義 page size、最大 order，以及 frame index 與實體位址的雙向轉換。
-2. 定義 frame entry 狀態，至少能區分 block head、隸屬於較大 block 的 free frame、allocated frame 與 reserved frame。
-3. 為每個 order 建立 free list，避免配置時掃描整個 page frame array。
-4. 實作 allocation：從目標 order 開始尋找 free block；若只能取得較大的 block，逐層 split，並將多出的 buddy 放回對應 free list。
-5. 實作 free：由 frame index 與 order 找出 buddy；若 buddy 同 order 且可合併，就從 free list 移除並反覆向上 coalesce。
-6. 確保 free-list node 可由 page frame array 直接取得，使每一層 split 或 merge 都是 `O(1)`，整體操作為 `O(log n)`。
-7. 印出 allocation、free、split 所釋出的 block，以及每次 merge iteration 的紀錄，供 demo 驗證。
+1. 使用 `BUDDY_MAX_ORDER` 表示 inclusive maximum，並以 `BUDDY_ORDER_COUNT` 表示 array 長度。
+2. 將 allocator control state 收進 singleton struct；frame array 仍依 managed RAM 大小動態配置。
+3. Frame 預設為 free candidate，build 前將已使用區域與 memory holes 標成 reserved。
+4. Build 由小到大合併 free frames，建立 maximal blocks，再加入各 order free lists。
+5. Public allocation API 接收 page count；內部找到最小可用 order，保留連續 prefix，並將多餘 suffix 拆解後歸還 free lists。
+6. Free 接收原始 address 與 page count，先驗證所有 allocated pieces，再以 XOR 反覆 merge。
+7. Split、merge 與 address conversion 保持 private；public API 只回報可預期的 input、state 與 OOM errors。
+8. 印出 allocation、free、split 所釋出的 block，以及每次 merge iteration 的紀錄，供 demo 驗證。
 
 ## Goal 2: Dynamic Memory Allocator
 
@@ -71,6 +73,7 @@ Dynamic allocator 應以 buddy system 提供的 page frame 作為 backing storag
 | 記憶體範圍 | 原因 |
 | --- | --- |
 | `0x0000 - 0x1000` | multicore boot spin tables |
+| kernel stack | 由 linker symbols 定義的 downward-growing boot stack |
 | kernel image | kernel text、rodata、data 與 bss 正在使用 |
 | initramfs | kernel 後續仍需存取封存內容 |
 | devicetree | 若初始化後仍會使用 FDT，應一併保留 |
@@ -97,7 +100,7 @@ Page frame array 的大小取決於執行時取得的實體記憶體容量，但
 2. 實作簡單的 aligned bump allocator，提供早期配置所需的 `startup_alloc(size, alignment)`。
 3. 在 startup 階段持續記錄所有已配置與已保留區域的起始位址及大小。
 4. 依實際 frame 數量動態配置 page frame array，不要使用固定大小的靜態陣列。
-5. 初始化 buddy system 時，先將所有 frame 視為不可配置，再依 usable ranges 釋出未被保留的區段。
+5. 初始化 buddy system 時，依 managed range 建立 frame array，再將 reserved ranges 與 memory holes 排除。
 6. 將 kernel、initramfs、spin tables 與 startup allocator 使用範圍透過 reserve API 標記為 allocated。
 7. Buddy system ready 後停止一般 startup allocation，後續配置改走 buddy system 或 dynamic allocator。
 

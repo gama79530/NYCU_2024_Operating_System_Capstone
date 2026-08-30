@@ -1,6 +1,5 @@
 #include "allocator.h"
 
-#include "config.h"
 #include "util.h"
 
 /* Private types */
@@ -35,7 +34,7 @@ void *simple_malloc(size_t size)
     }
 
     allocated = heap_current;
-    next = align_up(allocated + size, CONFIG_SIMPLE_ALLOCATOR_ALIGNMENT);
+    next = align_up(allocated + size, KERNEL_ALLOC_ALIGNMENT);
 
     if (next < allocated || next > heap_end) {
         return NULL;

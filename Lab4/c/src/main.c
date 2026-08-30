@@ -1,4 +1,5 @@
 #include "allocator.h"
+#include "buddy.h"
 #include "config.h"
 #include "fdt.h"
 #include "initramfs.h"
@@ -8,6 +9,11 @@
 #include "shell.h"
 #include "timer.h"
 #include "types.h"
+
+/* Private constants */
+
+#define SPIN_TABLE_BEGIN 0x00000000UL
+#define SPIN_TABLE_END   0x00001000UL
 
 /* Private types */
 
@@ -26,9 +32,19 @@ void main(uint64_t dtb_addr);
 /* Bridge the printf library's putc callback to mini UART output. */
 static void printf_putc(void *context, char c);
 
+/* Initialize the page allocator and reserve memory used during early boot. */
+static buddy_error_t buddy_initialize(const fdt_t *fdt,
+                                      uintptr_t initramfs_begin,
+                                      uintptr_t initramfs_end);
+
 /* Private data */
 
 static fdt_t boot_fdt;
+
+extern char kernel_begin;
+extern char kernel_end;
+extern char kernel_stack_bottom;
+extern char kernel_stack_top;
 
 /* Function implementations */
 
@@ -56,6 +72,12 @@ void main(uint64_t dtb_addr)
 
     initramfs_set_range(initramfs_begin, initramfs_end);
 
+    if (buddy_initialize(fdt_error == FDT_SUCCESS ? &boot_fdt : NULL,
+                         initramfs_begin,
+                         initramfs_end) != BUDDY_SUCCESS) {
+        printf("Buddy system initialization failed.\n");
+    }
+
     /* enter simple shell */
     mini_uart_enable_async();
     /*
@@ -70,4 +92,63 @@ static void printf_putc(void *context, char c)
 {
     (void) context;
     mini_uart_putc(c);
+}
+
+static buddy_error_t buddy_initialize(const fdt_t *fdt,
+                                      uintptr_t initramfs_begin,
+                                      uintptr_t initramfs_end)
+{
+    buddy_error_t error;
+
+    error = buddy_init(CONFIG_BUDDY_MEMORY_BASE, CONFIG_BUDDY_MEMORY_END);
+    if (error != BUDDY_SUCCESS) {
+        printf("buddy_init: %s\n", buddy_error_string(error));
+        return error;
+    }
+
+    error = buddy_reserve(SPIN_TABLE_BEGIN, SPIN_TABLE_END);
+    if (error != BUDDY_SUCCESS) {
+        printf("buddy_reserve(spin table): %s\n", buddy_error_string(error));
+        return error;
+    }
+
+    error = buddy_reserve((uintptr_t) &kernel_stack_bottom, (uintptr_t) &kernel_stack_top);
+    if (error != BUDDY_SUCCESS) {
+        printf("buddy_reserve(kernel stack): %s\n", buddy_error_string(error));
+        return error;
+    }
+
+    error = buddy_reserve((uintptr_t) &kernel_begin, (uintptr_t) &kernel_end);
+    if (error != BUDDY_SUCCESS) {
+        printf("buddy_reserve(kernel image): %s\n", buddy_error_string(error));
+        return error;
+    }
+
+    /* Reserve the entire startup heap because inherited subsystems still allocate from it. */
+    error = buddy_reserve(simple_allocator_begin(), simple_allocator_end());
+    if (error != BUDDY_SUCCESS) {
+        printf("buddy_reserve(startup heap): %s\n", buddy_error_string(error));
+        return error;
+    }
+
+    error = buddy_reserve(initramfs_begin, initramfs_end);
+    if (error != BUDDY_SUCCESS) {
+        printf("buddy_reserve(initramfs): %s\n", buddy_error_string(error));
+        return error;
+    }
+
+    if (fdt != NULL) {
+        error = buddy_reserve((uintptr_t) fdt->base, (uintptr_t) fdt->base + fdt->total_size);
+        if (error != BUDDY_SUCCESS) {
+            printf("buddy_reserve(fdt): %s\n", buddy_error_string(error));
+            return error;
+        }
+    }
+
+    error = buddy_build();
+    if (error != BUDDY_SUCCESS) {
+        printf("buddy_build: %s\n", buddy_error_string(error));
+    }
+
+    return error;
 }

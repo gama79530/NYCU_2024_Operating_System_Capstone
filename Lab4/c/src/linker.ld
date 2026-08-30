@@ -8,6 +8,9 @@ PHDRS {
 }
 
 PROVIDE(kernel_begin = 0x80000);
+PROVIDE(kernel_stack_size = 0x10000);
+PROVIDE(kernel_stack_top = kernel_begin);
+PROVIDE(kernel_stack_bottom = kernel_stack_top - kernel_stack_size);
 
 SECTIONS
 {

@@ -36,15 +36,30 @@
 #error "CONFIG_INITRAMFS_END must be greater than CONFIG_INITRAMFS_BASE"
 #endif
 
-/* allocator.c */
-#define CONFIG_SIMPLE_ALLOCATOR_ALIGNMENT 8
+/* Physical memory managed by the Lab 4 buddy system. */
+#define CONFIG_BUDDY_MEMORY_BASE 0x00000000UL
+#define CONFIG_BUDDY_MEMORY_END  0x3C000000UL
+#define CONFIG_BUDDY_PAGE_SHIFT 12
+#define CONFIG_BUDDY_MAX_ORDER  15
 
-#if CONFIG_SIMPLE_ALLOCATOR_ALIGNMENT < 1
-#error "CONFIG_SIMPLE_ALLOCATOR_ALIGNMENT must be at least 1"
+#if CONFIG_BUDDY_MEMORY_END <= CONFIG_BUDDY_MEMORY_BASE
+#error "CONFIG_BUDDY_MEMORY_END must be greater than CONFIG_BUDDY_MEMORY_BASE"
 #endif
 
-#if (CONFIG_SIMPLE_ALLOCATOR_ALIGNMENT & (CONFIG_SIMPLE_ALLOCATOR_ALIGNMENT - 1)) != 0
-#error "CONFIG_SIMPLE_ALLOCATOR_ALIGNMENT must be a power of two"
+#if CONFIG_BUDDY_PAGE_SHIFT >= 64
+#error "CONFIG_BUDDY_PAGE_SHIFT must be less than 64"
+#endif
+
+#if CONFIG_BUDDY_MAX_ORDER < 6
+#error "Lab 4 requires the buddy system maximum order to be greater than 5"
+#endif
+
+#if CONFIG_BUDDY_MAX_ORDER >= 64
+#error "CONFIG_BUDDY_MAX_ORDER must be less than 64: the 6-bit order field only encodes 0 through 63, and shifting 1UL by 64 is undefined"
+#endif
+
+#if CONFIG_BUDDY_PAGE_SHIFT + CONFIG_BUDDY_MAX_ORDER >= 64
+#error "The largest buddy block must fit in uintptr_t"
 #endif
 
 /* fdt.c */

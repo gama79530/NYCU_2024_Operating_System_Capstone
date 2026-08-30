@@ -3,6 +3,12 @@
 
 #include "types.h"
 
+/* Minimum alignment guaranteed by every kernel allocator. */
+#define KERNEL_ALLOC_ALIGNMENT 8UL
+
+_Static_assert((KERNEL_ALLOC_ALIGNMENT & (KERNEL_ALLOC_ALIGNMENT - 1)) == 0,
+               "kernel allocator alignment must be a power of two");
+
 /* Initialize the simple bump allocator with the linker-provided heap range. */
 void simple_allocator_init(void);
 

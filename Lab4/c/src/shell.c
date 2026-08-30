@@ -1,6 +1,7 @@
 #include "shell.h"
 
 #include "allocator.h"
+#include "buddy.h"
 #include "config.h"
 #include "el.h"
 #include "error.h"
@@ -105,6 +106,9 @@ static void cmd_heap(size_t argc, char *argv[]);
 /* Allocate bytes from the simple heap for allocator testing. */
 static void cmd_alloc(size_t argc, char *argv[]);
 
+/* Print buddy allocator state and free blocks by order. */
+static void cmd_buddy(size_t argc, char *argv[]);
+
 /* Print devicetree and initramfs range information discovered at boot. */
 static void cmd_dtb(size_t argc, char *argv[]);
 
@@ -137,6 +141,7 @@ static const command_t commands[] = {
     {"cat", "cat <path>", "Print a file from the initramfs archive", cmd_cat},
     {"heap", "heap", "Print simple allocator state", cmd_heap},
     {"alloc", "alloc <bytes>", "Allocate bytes from the simple allocator", cmd_alloc},
+    {"buddy", "buddy", "Print buddy allocator state", cmd_buddy},
     {"dtb", "dtb", "Print devicetree initramfs information", cmd_dtb},
     {"setTimeout", "setTimeout [message] [seconds]", "Print a message after a timeout", cmd_set_timeout},
     {"svc", "svc [path]", "Run an EL0 user program from initramfs", cmd_svc},
@@ -541,6 +546,16 @@ static void cmd_alloc(size_t argc, char *argv[])
     }
 
     printf("Allocated %u bytes at 0x%08X\n", (unsigned int) size, (unsigned int) (uintptr_t) ptr);
+}
+
+static void cmd_buddy(size_t argc, char *argv[])
+{
+    if (argc != 1) {
+        shell_print_usage(shell_find_command(argv[0]));
+        return;
+    }
+
+    buddy_dump_state();
 }
 
 static void cmd_dtb(size_t argc, char *argv[])
