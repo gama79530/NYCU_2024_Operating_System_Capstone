@@ -50,6 +50,10 @@
 #error "CONFIG_BUDDY_PAGE_SHIFT must be less than 64"
 #endif
 
+#if CONFIG_BUDDY_PAGE_SHIFT < 8
+#error "Dynamic allocator requires a buddy page size of at least 256 bytes"
+#endif
+
 #if CONFIG_BUDDY_MAX_ORDER < 6
 #error "Lab 4 requires the buddy system maximum order to be greater than 5"
 #endif

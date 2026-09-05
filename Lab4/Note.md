@@ -55,12 +55,13 @@ Dynamic allocator 應以 buddy system 提供的 page frame 作為 backing storag
 
 建議實作步驟：
 
-1. 定義數個常用的 memory pool，例如 16、32、48、96 bytes，並保證回傳位址至少符合 8-byte alignment。
+1. 依 buddy page size 產生 8、16、32、48、64、96 bytes 等 memory pools，最大 small chunk 為 page size 的 3/8，並保證回傳位址至少符合 8-byte alignment。
 2. 將 request size 向上取整到最接近且足夠容納的 pool size。
-3. 在該 pool 尋找 free chunk；若沒有可用 slot，就向 buddy system 申請新的 page frame 並切成 chunks。
-4. 配置時標記 chunk 已使用並回傳其位址；釋放時利用同一 page 共享的位址前綴或對應 metadata，找回所屬 pool 與 slot。
-5. 對大於最大 pool size 的請求，直接換算需要的 order，交由 buddy system 配置連續 pages。
-6. 印出 request size、實際 pool/block size、配置位址與 free 結果，確認 chunk 能被重複利用。
+3. 每個 pool 維護仍有 free chunks 的 page list；若沒有可用 page，就向 buddy system 申請新的 page frame 並切成 chunks。
+4. Free chunk 本身保存下一個 free chunk 的 pointer，使小區塊配置與釋放不需要掃描 bitmap。
+5. 釋放時利用同一 page 共享的位址前綴找回 page header；page 完全空閒時將它歸還 buddy system。
+6. 對大於最大 pool size 的請求，將 allocation header 與 payload 換算為 exact page count，再交由 buddy system 配置連續 pages。
+7. 印出 request size、實際 pool/block size、配置位址與 free 結果，確認 chunk 能被重複利用。
 
 ## Goal 3: Reserved Memory
 

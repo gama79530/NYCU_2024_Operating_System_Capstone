@@ -76,6 +76,8 @@ void main(uint64_t dtb_addr)
                          initramfs_begin,
                          initramfs_end) != BUDDY_SUCCESS) {
         printf("Buddy system initialization failed.\n");
+    } else if (!kernel_allocator_init()) {
+        printf("Dynamic allocator initialization failed.\n");
     }
 
     /* enter simple shell */

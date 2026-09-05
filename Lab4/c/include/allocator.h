@@ -27,4 +27,19 @@ uintptr_t simple_allocator_end(void);
 /* Return the number of bytes still available in the simple heap. */
 size_t simple_allocator_remaining(void);
 
+/* Initialize the dynamic allocator after the buddy system is ready. */
+bool kernel_allocator_init(void);
+
+/* Return whether allocations are currently served by the dynamic allocator. */
+bool kernel_allocator_is_ready(void);
+
+/* Allocate memory from the active startup or dynamic allocator. */
+void *kernel_malloc(size_t size);
+
+/* Release a dynamic allocation; startup allocations remain permanent. */
+void kernel_free(void *address);
+
+#define malloc kernel_malloc
+#define free   kernel_free
+
 #endif
