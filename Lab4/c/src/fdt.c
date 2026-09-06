@@ -94,6 +94,15 @@ typedef struct {
     bool path_matches[CONFIG_FDT_MAX_DEPTH];
 } fdt_property_lookup_t;
 
+typedef struct {
+    uint32_t address_cells;
+    uint32_t size_cells;
+    int memory_depth;
+    uintptr_t begin;
+    uintptr_t end;
+    bool found;
+} fdt_memory_lookup_t;
+
 typedef enum {
     FDT_TRAVERSE_BEGIN_NODE,
     FDT_TRAVERSE_END_NODE,
@@ -146,6 +155,15 @@ static fdt_error_t fdt_parse_property(const fdt_t *fdt,
  * once the target property is found.
  */
 static fdt_error_t fdt_property_lookup_callback(const fdt_traverse_item_t *item, void *context);
+
+/* Locate a root-level memory node and decode its first reg tuple. */
+static fdt_error_t fdt_memory_lookup_callback(const fdt_traverse_item_t *item, void *context);
+
+/* Decode an unsigned integer encoded in one or two cells. */
+static bool fdt_read_cells(const uint8_t *value, uint32_t cells, uint64_t *result);
+
+/* Return true for the standard memory or memory@unit-address node names. */
+static bool fdt_is_memory_node(const char *node_name);
 
 /* Return true when node_name matches the requested path component at depth. */
 static bool fdt_path_component_matches(const char *path, int depth, const char *node_name);
@@ -357,6 +375,62 @@ fdt_error_t fdt_get_property(const fdt_t *fdt,
     return FDT_SUCCESS;
 }
 
+fdt_error_t fdt_get_memory_range(const fdt_t *fdt, uintptr_t *begin, uintptr_t *end)
+{
+    const uint8_t *value;
+    size_t size;
+    fdt_error_t error;
+    fdt_memory_lookup_t lookup = {
+        .address_cells = 2,
+        .size_cells = 1,
+        .memory_depth = -1,
+        .begin = 0,
+        .end = 0,
+        .found = false,
+    };
+
+    if (fdt == NULL || begin == NULL || end == NULL) {
+        return FDT_ERROR_INVALID_ARGUMENT;
+    }
+
+    error = fdt_get_property(fdt, "/", "#address-cells", &value, &size);
+    if (error == FDT_SUCCESS) {
+        if (size != sizeof(uint32_t)) {
+            return FDT_ERROR_INVALID_STRUCTURE;
+        }
+        lookup.address_cells = read_be32(value);
+    } else if (error != FDT_ERROR_NOT_FOUND) {
+        return error;
+    }
+
+    error = fdt_get_property(fdt, "/", "#size-cells", &value, &size);
+    if (error == FDT_SUCCESS) {
+        if (size != sizeof(uint32_t)) {
+            return FDT_ERROR_INVALID_STRUCTURE;
+        }
+        lookup.size_cells = read_be32(value);
+    } else if (error != FDT_ERROR_NOT_FOUND) {
+        return error;
+    }
+
+    if (lookup.address_cells == 0 || lookup.address_cells > 2 ||
+        lookup.size_cells == 0 || lookup.size_cells > 2) {
+        return FDT_ERROR_INVALID_STRUCTURE;
+    }
+
+    error = fdt_traverse(fdt, fdt_memory_lookup_callback, &lookup);
+    if (error != FDT_SUCCESS && error != FDT_TRAVERSE_STOP) {
+        return error;
+    }
+    if (!lookup.found) {
+        return FDT_ERROR_NOT_FOUND;
+    }
+
+    *begin = lookup.begin;
+    *end = lookup.end;
+    return FDT_SUCCESS;
+}
+
 static bool fdt_read_u32(const uint8_t **cursor, const uint8_t *limit, uint32_t *value)
 {
     if (*cursor > limit || (size_t) (limit - *cursor) < sizeof(uint32_t)) {
@@ -478,6 +552,68 @@ static fdt_error_t fdt_property_lookup_callback(const fdt_traverse_item_t *item,
     lookup->size = item->property_size;
     lookup->found = true;
     return FDT_TRAVERSE_STOP;
+}
+
+static fdt_error_t fdt_memory_lookup_callback(const fdt_traverse_item_t *item, void *context)
+{
+    fdt_memory_lookup_t *lookup = context;
+    uint64_t address;
+    uint64_t region_size;
+    size_t address_bytes;
+    size_t tuple_size;
+
+    if (item->type == FDT_TRAVERSE_BEGIN_NODE) {
+        if (item->depth == 1 && fdt_is_memory_node(item->node_name)) {
+            lookup->memory_depth = item->depth;
+        }
+        return FDT_SUCCESS;
+    }
+
+    if (item->type == FDT_TRAVERSE_END_NODE) {
+        if (item->depth == lookup->memory_depth) {
+            lookup->memory_depth = -1;
+        }
+        return FDT_SUCCESS;
+    }
+
+    if (item->depth != lookup->memory_depth || strcmp(item->property_name, "reg") != 0) {
+        return FDT_SUCCESS;
+    }
+
+    address_bytes = lookup->address_cells * sizeof(uint32_t);
+    tuple_size = address_bytes + lookup->size_cells * sizeof(uint32_t);
+    if (item->property_size < tuple_size ||
+        !fdt_read_cells(item->property_value, lookup->address_cells, &address) ||
+        !fdt_read_cells(item->property_value + address_bytes, lookup->size_cells, &region_size) ||
+        region_size == 0 || region_size > (uintptr_t) -1 - address) {
+        return FDT_ERROR_INVALID_STRUCTURE;
+    }
+
+    lookup->begin = (uintptr_t) address;
+    lookup->end = (uintptr_t) (address + region_size);
+    lookup->found = true;
+    return FDT_TRAVERSE_STOP;
+}
+
+static bool fdt_read_cells(const uint8_t *value, uint32_t cells, uint64_t *result)
+{
+    if (value == NULL || result == NULL || cells == 0 || cells > 2) {
+        return false;
+    }
+
+    *result = read_be32(value);
+    if (cells == 2) {
+        *result = (*result << 32) | read_be32(value + sizeof(uint32_t));
+    }
+    return true;
+}
+
+static bool fdt_is_memory_node(const char *node_name)
+{
+    static const char prefix[] = "memory@";
+
+    return strcmp(node_name, "memory") == 0 ||
+           strncmp(node_name, prefix, sizeof(prefix) - 1) == 0;
 }
 
 static bool fdt_path_component_matches(const char *path, int depth, const char *node_name)

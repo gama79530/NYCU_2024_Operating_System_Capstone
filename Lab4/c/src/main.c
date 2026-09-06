@@ -34,6 +34,8 @@ static void printf_putc(void *context, char c);
 
 /* Initialize the page allocator and reserve memory used during early boot. */
 static buddy_error_t buddy_initialize(const fdt_t *fdt,
+                                      uintptr_t memory_begin,
+                                      uintptr_t memory_end,
                                       uintptr_t initramfs_begin,
                                       uintptr_t initramfs_end);
 
@@ -51,6 +53,8 @@ extern char kernel_stack_top;
 void main(uint64_t dtb_addr)
 {
     fdt_error_t fdt_error;
+    uintptr_t memory_begin = CONFIG_BUDDY_FALLBACK_MEMORY_BASE;
+    uintptr_t memory_end = CONFIG_BUDDY_FALLBACK_MEMORY_END;
     uintptr_t initramfs_begin = CONFIG_INITRAMFS_BASE;
     uintptr_t initramfs_end = CONFIG_INITRAMFS_END;
 
@@ -67,12 +71,23 @@ void main(uint64_t dtb_addr)
      */
     fdt_error = fdt_init(&boot_fdt, (uintptr_t) dtb_addr);
     if (fdt_error == FDT_SUCCESS) {
+        fdt_error_t memory_error =
+            fdt_get_memory_range(&boot_fdt, &memory_begin, &memory_end);
+
+        if (memory_error != FDT_SUCCESS) {
+            memory_begin = CONFIG_BUDDY_FALLBACK_MEMORY_BASE;
+            memory_end = CONFIG_BUDDY_FALLBACK_MEMORY_END;
+            printf("FDT memory range: %s Using fallback.\n",
+                   fdt_error_string(memory_error));
+        }
         initramfs_read_range_from_fdt(&boot_fdt, &initramfs_begin, &initramfs_end);
     }
 
     initramfs_set_range(initramfs_begin, initramfs_end);
 
     if (buddy_initialize(fdt_error == FDT_SUCCESS ? &boot_fdt : NULL,
+                         memory_begin,
+                         memory_end,
                          initramfs_begin,
                          initramfs_end) != BUDDY_SUCCESS) {
         printf("Buddy system initialization failed.\n");
@@ -97,12 +112,14 @@ static void printf_putc(void *context, char c)
 }
 
 static buddy_error_t buddy_initialize(const fdt_t *fdt,
+                                      uintptr_t memory_begin,
+                                      uintptr_t memory_end,
                                       uintptr_t initramfs_begin,
                                       uintptr_t initramfs_end)
 {
     buddy_error_t error;
 
-    error = buddy_init(CONFIG_BUDDY_MEMORY_BASE, CONFIG_BUDDY_MEMORY_END);
+    error = buddy_init(memory_begin, memory_end);
     if (error != BUDDY_SUCCESS) {
         printf("buddy_init: %s\n", buddy_error_string(error));
         return error;

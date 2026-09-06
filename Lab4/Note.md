@@ -150,7 +150,7 @@ Page frame array 的大小取決於執行時取得的實體記憶體容量，但
 
 建議實作步驟：
 
-1. 從 devicetree 的 memory node 取得可用實體記憶體範圍；若暫時不解析，可依 spec 使用 `0x00000000 - 0x3c000000`。
+1. 從 devicetree 的 root `#address-cells`、`#size-cells` 與 memory node 的 `reg` 取得可用實體記憶體範圍；解析失敗時依 spec fallback 至 `0x00000000 - 0x3c000000`。
 2. 實作簡單的 aligned bump allocator，提供早期配置所需的 `startup_alloc(size, alignment)`。
 3. 在 startup 階段持續記錄所有已配置與已保留區域的起始位址及大小。
 4. 依實際 frame 數量動態配置 page frame array，不要使用固定大小的靜態陣列。

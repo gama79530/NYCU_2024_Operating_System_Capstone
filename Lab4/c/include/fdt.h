@@ -34,4 +34,7 @@ fdt_error_t fdt_get_property(const fdt_t *fdt,
                              const uint8_t **value,
                              size_t *size);
 
+/* Read the first usable range from a root-level memory node. */
+fdt_error_t fdt_get_memory_range(const fdt_t *fdt, uintptr_t *begin, uintptr_t *end);
+
 #endif

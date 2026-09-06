@@ -30,20 +30,20 @@
 
 /* initramfs.c */
 #define CONFIG_INITRAMFS_BASE 0x08000000UL
-#define CONFIG_INITRAMFS_END  0x08200000UL
+#define CONFIG_INITRAMFS_END 0x08200000UL
 
 #if CONFIG_INITRAMFS_END <= CONFIG_INITRAMFS_BASE
 #error "CONFIG_INITRAMFS_END must be greater than CONFIG_INITRAMFS_BASE"
 #endif
 
-/* Physical memory managed by the Lab 4 buddy system. */
-#define CONFIG_BUDDY_MEMORY_BASE 0x00000000UL
-#define CONFIG_BUDDY_MEMORY_END  0x3C000000UL
+/* Fallback physical memory range when the DTB does not provide one. */
+#define CONFIG_BUDDY_FALLBACK_MEMORY_BASE 0x00000000UL
+#define CONFIG_BUDDY_FALLBACK_MEMORY_END 0x3C000000UL
 #define CONFIG_BUDDY_PAGE_SHIFT 12
-#define CONFIG_BUDDY_MAX_ORDER  15
+#define CONFIG_BUDDY_MAX_ORDER 15
 
-#if CONFIG_BUDDY_MEMORY_END <= CONFIG_BUDDY_MEMORY_BASE
-#error "CONFIG_BUDDY_MEMORY_END must be greater than CONFIG_BUDDY_MEMORY_BASE"
+#if CONFIG_BUDDY_FALLBACK_MEMORY_END <= CONFIG_BUDDY_FALLBACK_MEMORY_BASE
+#error "CONFIG_BUDDY_FALLBACK_MEMORY_END must be greater than CONFIG_BUDDY_FALLBACK_MEMORY_BASE"
 #endif
 
 #if CONFIG_BUDDY_PAGE_SHIFT >= 64
@@ -59,7 +59,8 @@
 #endif
 
 #if CONFIG_BUDDY_MAX_ORDER >= 64
-#error "CONFIG_BUDDY_MAX_ORDER must be less than 64: the 6-bit order field only encodes 0 through 63, and shifting 1UL by 64 is undefined"
+#error \
+    "CONFIG_BUDDY_MAX_ORDER must be less than 64: the 6-bit order field only encodes 0 through 63, and shifting 1UL by 64 is undefined"
 #endif
 
 #if CONFIG_BUDDY_PAGE_SHIFT + CONFIG_BUDDY_MAX_ORDER >= 64
