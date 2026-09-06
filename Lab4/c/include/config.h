@@ -82,13 +82,23 @@
 
 /* task_queue.c */
 #define CONFIG_TASK_QUEUE_MAX_TASKS 64
+#define CONFIG_TASK_QUEUE_CACHE_SIZE 16
 
 #if CONFIG_TASK_QUEUE_MAX_TASKS < 1
 #error "CONFIG_TASK_QUEUE_MAX_TASKS must be at least 1"
 #endif
 
+#if CONFIG_TASK_QUEUE_CACHE_SIZE < 0
+#error "CONFIG_TASK_QUEUE_CACHE_SIZE must not be negative"
+#endif
+
+#if CONFIG_TASK_QUEUE_CACHE_SIZE > CONFIG_TASK_QUEUE_MAX_TASKS
+#error "CONFIG_TASK_QUEUE_CACHE_SIZE must not exceed CONFIG_TASK_QUEUE_MAX_TASKS"
+#endif
+
 /* timer.c */
 #define CONFIG_TIMER_MAX_EVENTS 64
+#define CONFIG_TIMER_EVENT_CACHE_SIZE 16
 /*
  * Keep timer_event_t at 128 bytes on AArch64:
  * list_head_t(16) + expires_at(8) + callback(8) + message(96).
@@ -99,6 +109,14 @@
 
 #if CONFIG_TIMER_MAX_EVENTS < 1
 #error "CONFIG_TIMER_MAX_EVENTS must be at least 1"
+#endif
+
+#if CONFIG_TIMER_EVENT_CACHE_SIZE < 0
+#error "CONFIG_TIMER_EVENT_CACHE_SIZE must not be negative"
+#endif
+
+#if CONFIG_TIMER_EVENT_CACHE_SIZE > CONFIG_TIMER_MAX_EVENTS
+#error "CONFIG_TIMER_EVENT_CACHE_SIZE must not exceed CONFIG_TIMER_MAX_EVENTS"
 #endif
 
 #if CONFIG_TIMER_MESSAGE_SIZE < 1

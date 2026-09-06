@@ -31,10 +31,10 @@ static void write_cntp_ctl_el0(uint64_t value);
 /* Program the physical timer to fire after delta ticks. */
 static void write_cntp_tval_el0(uint64_t delta);
 
-/* Allocate a timer event from the free list or the simple heap. */
+/* Allocate a timer event from the local cache or kernel allocator. */
 static timer_event_t *timer_alloc_event(void);
 
-/* Reset a timer event and return it to the free list. */
+/* Reset a timer event and cache or release it. */
 static void timer_free_event(timer_event_t *event);
 
 /* Copy message into the fixed-size event buffer. */
@@ -59,7 +59,8 @@ static bool timer_seconds_to_ticks(uint64_t seconds, uint64_t *ticks);
 
 static LIST_HEAD(waiting_events);
 static LIST_HEAD(free_events);
-static size_t allocated_count;
+static size_t active_count;
+static size_t cached_count;
 static uint64_t counter_frequency;
 
 /* Function implementations */
@@ -169,23 +170,23 @@ static timer_event_t *timer_alloc_event(void)
 {
     timer_event_t *event;
 
+    if (active_count >= CONFIG_TIMER_MAX_EVENTS) {
+        return NULL;
+    }
+
     if (!list_is_empty(&free_events)) {
         event = container_of(free_events.next, timer_event_t, anchor);
         list_remove(&event->anchor);
-        return event;
+        cached_count--;
+    } else {
+        event = malloc(sizeof(*event));
+        if (event == NULL) {
+            return NULL;
+        }
+        LIST_INIT(&event->anchor);
     }
 
-    if (allocated_count >= CONFIG_TIMER_MAX_EVENTS) {
-        return NULL;
-    }
-
-    event = simple_malloc(sizeof(*event));
-    if (event == NULL) {
-        return NULL;
-    }
-
-    allocated_count++;
-    LIST_INIT(&event->anchor);
+    active_count++;
     return event;
 }
 
@@ -198,7 +199,14 @@ static void timer_free_event(timer_event_t *event)
     event->expires_at = 0;
     event->callback = NULL;
     event->message[0] = '\0';
-    list_add_last(&event->anchor, &free_events);
+    active_count--;
+
+    if (!kernel_allocator_is_ready() || cached_count < CONFIG_TIMER_EVENT_CACHE_SIZE) {
+        list_add_last(&event->anchor, &free_events);
+        cached_count++;
+    } else {
+        free(event);
+    }
 }
 
 static void timer_copy_message(timer_event_t *event, const char *message)

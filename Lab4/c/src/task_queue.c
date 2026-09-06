@@ -17,17 +17,18 @@ typedef struct task_node {
 
 /* Private function declarations */
 
-/* Allocate a task node from the free list or the simple heap. */
+/* Allocate a task node from the local cache or kernel allocator. */
 static task_node_t *task_alloc(void);
 
-/* Reset a task node and return it to the free list. */
+/* Reset a task node and cache or release it. */
 static void task_free(task_node_t *task);
 
 /* Private data */
 
 static LIST_HEAD(pending_queue);
 static LIST_HEAD(free_queue);
-static size_t allocated_count;
+static size_t active_count;
+static size_t cached_count;
 static bool task_running;
 static task_priority_t current_task_priority;
 
@@ -37,23 +38,23 @@ static task_node_t *task_alloc(void)
 {
     task_node_t *task;
 
+    if (active_count >= CONFIG_TASK_QUEUE_MAX_TASKS) {
+        return NULL;
+    }
+
     if (!list_is_empty(&free_queue)) {
         task = container_of(free_queue.next, task_node_t, anchor);
         list_remove(&task->anchor);
-        return task;
+        cached_count--;
+    } else {
+        task = malloc(sizeof(*task));
+        if (task == NULL) {
+            return NULL;
+        }
+        LIST_INIT(&task->anchor);
     }
 
-    if (allocated_count >= CONFIG_TASK_QUEUE_MAX_TASKS) {
-        return NULL;
-    }
-
-    task = simple_malloc(sizeof(*task));
-    if (task == NULL) {
-        return NULL;
-    }
-
-    allocated_count++;
-    LIST_INIT(&task->anchor);
+    active_count++;
     return task;
 }
 
@@ -65,7 +66,14 @@ static void task_free(task_node_t *task)
 
     task->callback = NULL;
     task->data = NULL;
-    list_add_last(&task->anchor, &free_queue);
+    active_count--;
+
+    if (!kernel_allocator_is_ready() || cached_count < CONFIG_TASK_QUEUE_CACHE_SIZE) {
+        list_add_last(&task->anchor, &free_queue);
+        cached_count++;
+    } else {
+        free(task);
+    }
 }
 
 bool task_queue_push(task_priority_t priority, task_callback_t callback, void *data)

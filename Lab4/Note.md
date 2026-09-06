@@ -61,7 +61,9 @@ Dynamic allocator 應以 buddy system 提供的 page frame 作為 backing storag
 4. Free chunk 本身保存下一個 free chunk 的 pointer，使小區塊配置與釋放不需要掃描 bitmap。
 5. 釋放時利用同一 page 共享的位址前綴找回 page header；page 完全空閒時將它歸還 buddy system。
 6. 對大於最大 pool size 的請求，將 allocation header 與 payload 換算為 exact page count，再交由 buddy system 配置連續 pages。
-7. 印出 request size、實際 pool/block size、配置位址與 free 結果，確認 chunk 能被重複利用。
+7. Timer events 與 task nodes 統一透過 `malloc()`、`free()` 配置，同時保留具有獨立容量上限的 local object cache。
+8. Startup allocator demo 與 buddy metadata 保留直接使用 `simple_malloc()`，其他 runtime allocations 則使用統一 allocator API。
+9. 印出 request size、實際 pool/block size、配置位址與 free 結果，確認 chunk 能被重複利用。
 
 ## Goal 3: Reserved Memory
 
