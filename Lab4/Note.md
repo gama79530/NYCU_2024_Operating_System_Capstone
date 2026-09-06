@@ -65,6 +65,57 @@ Dynamic allocator 應以 buddy system 提供的 page frame 作為 backing storag
 8. Startup allocator demo 與 buddy metadata 保留直接使用 `simple_malloc()`，其他 runtime allocations 則使用統一 allocator API。
 9. 印出 request size、實際 pool/block size、配置位址與 free 結果，確認 chunk 能被重複利用。
 
+### Allocator Demo
+
+Shell 提供 `malloc <bytes>` 與 `free <address>`，可直接用 allocator 回傳的位址
+配置及釋放 dynamic memory：
+
+```text
+$ malloc 64
+malloc: allocated 64 bytes at 0x0018DFA8
+$ malloc 6000
+malloc: allocated 6000 bytes at 0x00002010
+$ free 0x0018DFA8
+$ free 0x00002010
+```
+
+位址會隨當下 memory layout 改變，`free` 時應使用同一次 `malloc` 實際印出的位址。
+這是低階 demo interface，不追蹤 allocation，也不防止錯誤位址或重複釋放。
+
+`kmem_demo` 會先說明配置與釋放順序，再自動執行一組完整範例。若要看到 buddy
+內部的 split/coalesce 過程，先將 `CONFIG_VERBOSE` 設為 `1` 並重新建置；關閉時
+仍會執行相同範例，但只顯示 demo 摘要。
+
+Fresh boot 進入 shell 後可在執行前後印出 buddy 狀態：
+
+```text
+$ buddy
+$ kmem_demo
+$ buddy
+```
+
+執行時，每一階段都會先印出即將模擬的 shell command；重複的 small allocation
+與 release 會各自整理成一個 log 區塊，避免 allocator 訊息彼此混淆。
+
+這組範例分成三個階段：
+
+1. 配置 13 bytes。13 並未對齊，allocator 應選擇 16-byte pool，且回傳位址仍須符合 8-byte alignment；確認後立即釋放。
+2. 連續配置三個最大 small-pool chunks。預設 4 KiB page 下，每個 chunk 是 1536 bytes，而一個 pool page 只能容納兩個，因此第三筆配置會建立第二個 pool page。三筆配置完成後再反向釋放，應看到兩個 pool pages 分別歸還 buddy。
+3. 連續配置六個 order 9 large areas，再反向釋放。每筆 payload 使用 `(2^9 - 1) * page_size`，加上 large header 後剛好需要 512 pages。依 fresh boot 的 free-list 狀態，前五筆會消耗既有 order 9 block 與兩個 order 10 blocks，第六筆則迫使 order 11 連續 split 成 order 10、order 9；反向釋放時會連續 coalesce 回 order 11。
+
+| Verbose 訊息 | 代表動作 |
+| --- | --- |
+| `create ... pool page` | Dynamic allocator 向 buddy 取得一頁並切成 small chunks |
+| `release empty pool page` | Pool page 的 chunks 全部釋放，整頁歸還 buddy |
+| `allocate 13 bytes` 搭配 `create 16-byte pool page` | 未對齊 request 被向上選入可容納它的 size class |
+| `create 512-page large block` | Large allocation 取得一個完整 order 9 buddy group |
+| `release 512-page large block` | Order 9 large allocation 已完整歸還 buddy |
+| 連續的 `split free ... order N` | 較高 order buddy group 正逐層拆成較小 blocks |
+| 連續的 `merge ... order N` | 相鄰 free buddies 正逐層合併回原本的大 block |
+
+第二次 `buddy` 的 free page 總數應與第一次相同，表示 demo 使用的 pool pages 與
+large area 都已完整歸還。
+
 ## Goal 3: Reserved Memory
 
 實作可登記任意實體位址範圍的 reserve API，例如

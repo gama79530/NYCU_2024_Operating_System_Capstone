@@ -71,6 +71,9 @@ static shell_error_t shell_parse_args(char *line, char *argv[], size_t capacity,
 /* Parse a decimal size argument used by shell commands. */
 static bool shell_parse_size(const char *str, size_t *value);
 
+/* Parse a hexadecimal address with an optional 0x prefix. */
+static bool shell_parse_address(const char *str, uintptr_t *value);
+
 /* Find a command descriptor by command name. */
 static const command_t *shell_find_command(const char *name);
 
@@ -106,6 +109,15 @@ static void cmd_heap(size_t argc, char *argv[]);
 /* Allocate bytes from the simple heap for allocator testing. */
 static void cmd_alloc(size_t argc, char *argv[]);
 
+/* Allocate bytes from the kernel allocator and print the returned address. */
+static void cmd_malloc(size_t argc, char *argv[]);
+
+/* Release a kernel allocation by address. */
+static void cmd_free(size_t argc, char *argv[]);
+
+/* Run the scripted dynamic allocator and buddy system demonstration. */
+static void cmd_kmem_demo(size_t argc, char *argv[]);
+
 /* Print buddy allocator state and free blocks by order. */
 static void cmd_buddy(size_t argc, char *argv[]);
 
@@ -126,6 +138,12 @@ static void cmd_svc(size_t argc, char *argv[]);
 /* Private data */
 
 #define SHELL_PROMPT "$ "
+#define KMEM_DEMO_UNALIGNED_SIZE 13
+#define KMEM_DEMO_POOL_ALLOCATION_COUNT 3
+#define KMEM_DEMO_POOL_SIZE (BUDDY_PAGE_SIZE * 3 / 8)
+#define KMEM_DEMO_LARGE_ORDER 9
+#define KMEM_DEMO_LARGE_ALLOCATION_COUNT 6
+#define KMEM_DEMO_LARGE_SIZE (((1UL << KMEM_DEMO_LARGE_ORDER) - 1) * BUDDY_PAGE_SIZE)
 
 static const fdt_t *shell_fdt;
 static char shell_line_buffer[CONFIG_SHELL_BUFFER_SIZE];
@@ -141,6 +159,9 @@ static const command_t commands[] = {
     {"cat", "cat <path>", "Print a file from the initramfs archive", cmd_cat},
     {"heap", "heap", "Print simple allocator state", cmd_heap},
     {"alloc", "alloc <bytes>", "Allocate bytes from the simple allocator", cmd_alloc},
+    {"malloc", "malloc <bytes>", "Allocate bytes from the kernel allocator", cmd_malloc},
+    {"free", "free <address>", "Release a kernel allocation by address", cmd_free},
+    {"kmem_demo", "kmem_demo", "Demonstrate dynamic and buddy allocation", cmd_kmem_demo},
     {"buddy", "buddy", "Print buddy allocator state", cmd_buddy},
     {"dtb", "dtb", "Print devicetree initramfs information", cmd_dtb},
     {"setTimeout", "setTimeout [message] [seconds]", "Print a message after a timeout", cmd_set_timeout},
@@ -331,6 +352,23 @@ static bool shell_parse_size(const char *str, size_t *value)
     }
 
     *value = (size_t) parsed;
+    return true;
+}
+
+static bool shell_parse_address(const char *str, uintptr_t *value)
+{
+    size_t offset = 0;
+    size_t length = strlen(str);
+    unsigned long parsed;
+
+    if (length >= 2 && str[0] == '0' && (str[1] == 'x' || str[1] == 'X')) {
+        offset = 2;
+    }
+    if (offset == length || !strntoul(str + offset, length - offset, 16, &parsed)) {
+        return false;
+    }
+
+    *value = (uintptr_t) parsed;
     return true;
 }
 
@@ -546,6 +584,156 @@ static void cmd_alloc(size_t argc, char *argv[])
     }
 
     printf("Allocated %u bytes at 0x%08X\n", (unsigned int) size, (unsigned int) (uintptr_t) ptr);
+}
+
+static void cmd_malloc(size_t argc, char *argv[])
+{
+    size_t size;
+    void *address;
+
+    if (argc != 2 || !shell_parse_size(argv[1], &size) || size == 0) {
+        shell_print_usage(shell_find_command(argv[0]));
+        return;
+    }
+    if (!kernel_allocator_is_ready()) {
+        printf("malloc: dynamic allocator is not ready\n");
+        return;
+    }
+
+    address = malloc(size);
+    if (address == NULL) {
+        printf("malloc: failed to allocate %u bytes\n", (unsigned int) size);
+        return;
+    }
+
+    printf("malloc: allocated %u bytes at 0x%08X\n",
+           (unsigned int) size,
+           (unsigned int) (uintptr_t) address);
+}
+
+static void cmd_free(size_t argc, char *argv[])
+{
+    uintptr_t address;
+
+    if (argc != 2 || !shell_parse_address(argv[1], &address)) {
+        shell_print_usage(shell_find_command(argv[0]));
+        return;
+    }
+
+    free((void *) address);
+    printf("free: released allocation at 0x%08X\n", (unsigned int) address);
+}
+
+static void cmd_kmem_demo(size_t argc, char *argv[])
+{
+    void *pool_allocations[KMEM_DEMO_POOL_ALLOCATION_COUNT];
+    void *large_allocations[KMEM_DEMO_LARGE_ALLOCATION_COUNT];
+    void *unaligned_allocation;
+    size_t allocation_count;
+    bool stage_completed;
+
+    if (argc != 1) {
+        shell_print_usage(shell_find_command(argv[0]));
+        return;
+    }
+    if (!kernel_allocator_is_ready()) {
+        printf("kmem_demo: dynamic allocator is not ready\n");
+        return;
+    }
+
+    printf("kmem_demo plan:\n");
+    printf("  1. Allocate and free %u bytes to verify size rounding and alignment.\n",
+           (unsigned int) KMEM_DEMO_UNALIGNED_SIZE);
+    printf("  2. Allocate and free %u maximum-size pool chunks to use two pool pages.\n",
+           (unsigned int) KMEM_DEMO_POOL_ALLOCATION_COUNT);
+    printf("  3. Allocate and free %u order-%u large areas to force split and coalesce.\n",
+           (unsigned int) KMEM_DEMO_LARGE_ALLOCATION_COUNT,
+           (unsigned int) KMEM_DEMO_LARGE_ORDER);
+#if CONFIG_VERBOSE
+    printf("  Detailed allocator and buddy logging is enabled.\n");
+#else
+    printf("  Set CONFIG_VERBOSE to 1 and rebuild to see split and merge details.\n");
+#endif
+
+    printf("\n[kmem_demo] Unaligned small allocation\n");
+    printf("  Next command: malloc %u\n", (unsigned int) KMEM_DEMO_UNALIGNED_SIZE);
+    unaligned_allocation = malloc(KMEM_DEMO_UNALIGNED_SIZE);
+    if (unaligned_allocation == NULL) {
+        printf("kmem_demo: unaligned small allocation failed\n");
+        return;
+    }
+    if (((uintptr_t) unaligned_allocation & (KERNEL_ALLOC_ALIGNMENT - 1)) != 0) {
+        printf("  Result: 0x%08X is not %u-byte aligned.\n",
+               (unsigned int) (uintptr_t) unaligned_allocation,
+               (unsigned int) KERNEL_ALLOC_ALIGNMENT);
+        free(unaligned_allocation);
+        return;
+    }
+    printf("  Result: 0x%08X is %u-byte aligned.\n",
+           (unsigned int) (uintptr_t) unaligned_allocation,
+           (unsigned int) KERNEL_ALLOC_ALIGNMENT);
+    printf("  Next command: free 0x%08X\n", (unsigned int) (uintptr_t) unaligned_allocation);
+    free(unaligned_allocation);
+
+    printf("\n[kmem_demo] Pool page allocation\n");
+    printf("  Next commands: malloc %u, repeated %u times before any free.\n",
+           (unsigned int) KMEM_DEMO_POOL_SIZE,
+           (unsigned int) KMEM_DEMO_POOL_ALLOCATION_COUNT);
+    printf("  The following logs belong to this repeated allocation batch.\n");
+    allocation_count = 0;
+    while (allocation_count < KMEM_DEMO_POOL_ALLOCATION_COUNT) {
+        pool_allocations[allocation_count] = malloc(KMEM_DEMO_POOL_SIZE);
+        if (pool_allocations[allocation_count] == NULL) {
+            printf("kmem_demo: pool allocation %u failed\n", (unsigned int) allocation_count);
+            break;
+        }
+        allocation_count++;
+    }
+    stage_completed = allocation_count == KMEM_DEMO_POOL_ALLOCATION_COUNT;
+
+    printf("\n[kmem_demo] Pool page release\n");
+    printf("  Next commands: free <pool-address>, %u times in reverse order.\n",
+           (unsigned int) allocation_count);
+    printf("  The following logs belong to this repeated release batch.\n");
+    while (allocation_count > 0) {
+        free(pool_allocations[--allocation_count]);
+    }
+    if (!stage_completed) {
+        printf("kmem_demo: pool allocation stage aborted\n");
+        return;
+    }
+
+    printf("\n[kmem_demo] Order-%u large allocation and buddy split\n",
+           (unsigned int) KMEM_DEMO_LARGE_ORDER);
+    printf("  Next commands: malloc %u, repeated %u times before any free.\n",
+           (unsigned int) KMEM_DEMO_LARGE_SIZE,
+           (unsigned int) KMEM_DEMO_LARGE_ALLOCATION_COUNT);
+    printf("  The following logs belong to this repeated allocation batch.\n");
+    allocation_count = 0;
+    while (allocation_count < KMEM_DEMO_LARGE_ALLOCATION_COUNT) {
+        large_allocations[allocation_count] = malloc(KMEM_DEMO_LARGE_SIZE);
+        if (large_allocations[allocation_count] == NULL) {
+            printf("kmem_demo: large allocation %u failed\n", (unsigned int) allocation_count);
+            break;
+        }
+        allocation_count++;
+    }
+    stage_completed = allocation_count == KMEM_DEMO_LARGE_ALLOCATION_COUNT;
+
+    printf("\n[kmem_demo] Order-%u large release and buddy coalesce\n",
+           (unsigned int) KMEM_DEMO_LARGE_ORDER);
+    printf("  Next commands: free <large-address>, %u times in reverse order.\n",
+           (unsigned int) allocation_count);
+    printf("  The following logs belong to this repeated release batch.\n");
+    while (allocation_count > 0) {
+        free(large_allocations[--allocation_count]);
+    }
+    if (!stage_completed) {
+        printf("kmem_demo: large allocation stage aborted\n");
+        return;
+    }
+
+    printf("kmem_demo: complete; all demo allocations released\n");
 }
 
 static void cmd_buddy(size_t argc, char *argv[])
