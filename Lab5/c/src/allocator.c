@@ -48,15 +48,34 @@ typedef struct {
 
 /* Private function declarations */
 
+/** Initialize size-class pools after the buddy allocator is ready. */
 static bool dynamic_allocator_init(void);
+
+/** Return whether the dynamic allocator has completed initialization. */
 static bool dynamic_allocator_is_ready(void);
+
+/** Allocate from a size-class pool or a large block, protecting shared state from IRQ. */
 static void *dynamic_malloc(size_t size);
+
+/** Dispatch a free by block type, protecting shared state from IRQ. */
 static void dynamic_free(void *address);
+
+/** Find the smallest fitting pool, or return DYNAMIC_POOL_COUNT for a large request. */
 static uint32_t find_pool_index(size_t size);
+
+/** Obtain a buddy page and divide it into free chunks for the selected pool. */
 static dynamic_pool_page_t *create_pool_page(uint32_t pool_index);
+
+/** Take a free chunk from the selected pool, creating a backing page if needed. */
 static void *allocate_small(uint32_t pool_index);
+
+/** Allocate contiguous pages for the header and payload, returning the payload address. */
 static void *allocate_large(size_t size);
+
+/** Return a chunk to its pool and release the backing page when all chunks are free. */
 static void free_small(dynamic_pool_page_t *page, void *address);
+
+/** Validate the payload address and return the large block's pages to buddy. */
 static void free_large(dynamic_large_block_t *block, void *address);
 
 /* Private data */

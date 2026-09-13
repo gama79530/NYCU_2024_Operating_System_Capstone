@@ -41,17 +41,40 @@ _Static_assert(CONFIG_BUDDY_MAX_ORDER <= 63,
 
 /* Private function declarations */
 
+/** Convert a managed page index to its physical base address. */
 static uintptr_t page_index_to_address(size_t page_index);
+
+/** Convert a physical address to its page index relative to the managed range. */
 static size_t address_to_page_index(uintptr_t address);
+
+/** Locate the free-list node stored at the beginning of a page. */
 static list_head_t *page_index_to_node(size_t page_index);
+
+/** Recover the page index from an embedded free-list node address. */
 static size_t node_to_page_index(const list_head_t *node);
+
+/** Append a block to its order's free list and increment the free-block count. */
 static void add_free_block(size_t page_index);
+
+/** Unlink a block from its order's free list and decrement the free-block count. */
 static void remove_free_block(size_t page_index);
+
+/** Find the smallest order that can hold the requested page count. */
 static uint32_t page_count_to_order(size_t page_count);
+
+/** Allocate a block of the requested order, splitting a larger block if necessary. */
 static buddy_error_t allocate_order(uint32_t order, size_t *page_index);
+
+/** Split an unlisted free block down to target_order, returning unused halves to free lists. */
 static void split_free_block(size_t page_index, uint32_t target_order);
+
+/** Keep the requested allocated prefix and return excess suffix pages to free lists. */
 static void trim_allocated_block(size_t page_index, size_t page_count);
+
+/** Free one order-sized block and repeatedly merge it with available buddies. */
 static void free_order_block(size_t page_index);
+
+/** Log an operation with the block address and order when verbose logging is enabled. */
 static void log_block(const char *operation, size_t page_index);
 
 /* Private data */
