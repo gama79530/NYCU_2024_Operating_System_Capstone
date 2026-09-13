@@ -81,6 +81,43 @@
 #error "CONFIG_REBOOT_TICKS must fit the watchdog time field"
 #endif
 
+/*
+ * thread.c: allocation size for kernel calls and nested IRQ frames.
+ * With the current allocator and 4 KiB pages, 15 KiB leaves room for the
+ * allocation header within four pages. Usable stack bounds are aligned
+ * inward; usable capacity may be smaller than this allocation size.
+ */
+#define CONFIG_THREAD_STACK_SIZE (15 * 1024)
+
+/*
+ * The 4 KiB minimum is a conservative project policy, not an ARM requirement.
+ * It rejects very small stacks but does not guarantee against overflow;
+ * required capacity depends on call depth, local variables, and IRQ nesting.
+ * Keep the allocation size in 16-byte units. With malloc's 8-byte alignment,
+ * aligning both bounds inward trims either zero or 16 bytes in total.
+ */
+#if CONFIG_THREAD_STACK_SIZE < 4096 || (CONFIG_THREAD_STACK_SIZE % 16) != 0
+#error "CONFIG_THREAD_STACK_SIZE must be at least 4096 and a multiple of 16"
+#endif
+
+/* Includes reserved IDs 0 (boot) and 1 (idle). */
+#ifndef CONFIG_THREAD_ID_COUNT
+#define CONFIG_THREAD_ID_COUNT 256
+#endif
+
+#if CONFIG_THREAD_ID_COUNT < 3 || CONFIG_THREAD_ID_COUNT > 65536
+#error "CONFIG_THREAD_ID_COUNT must be between 3 and 65536"
+#endif
+
+/* Maximum zombies reclaimed during one idle turn before yielding. */
+#ifndef CONFIG_THREAD_REAP_LIMIT
+#define CONFIG_THREAD_REAP_LIMIT 1
+#endif
+
+#if CONFIG_THREAD_REAP_LIMIT < 1
+#error "CONFIG_THREAD_REAP_LIMIT must be at least 1"
+#endif
+
 /* task_queue.c */
 #define CONFIG_TASK_QUEUE_MAX_TASKS 64
 #define CONFIG_TASK_QUEUE_CACHE_SIZE 16

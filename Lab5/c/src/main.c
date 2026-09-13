@@ -7,6 +7,7 @@
 #include "mini_uart.h"
 #include "printf.h"
 #include "shell.h"
+#include "thread.h"
 #include "timer.h"
 #include "types.h"
 
@@ -95,7 +96,11 @@ void main(uint64_t dtb_addr)
         printf("Dynamic allocator initialization failed.\n");
     }
 
-    /* enter simple shell */
+    if (!thread_init()) {
+        printf("Thread system initialization failed.\n");
+    }
+
+    /* enter simple shell on the boot thread */
     mini_uart_enable_async();
     /*
      * Lab5 prototype currently implements source handling and nesting policy for IRQ.

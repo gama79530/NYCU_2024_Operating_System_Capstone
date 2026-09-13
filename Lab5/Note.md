@@ -56,13 +56,67 @@ priority 的 runnable threads 以 round-robin 方式輪流執行。這裡的 thr
 Context switch 只需保存函式呼叫邊界的 callee-saved registers；interrupt 或
 exception 打斷執行時所需的完整暫存器狀態，仍由 exception entry 保存。
 
+排程策略集中在兩個 private functions，後續替換演算法時維持以下介面約定：
+
+```c
+static void scheduler_add_thread(thread_t *thread);
+static thread_t *scheduler_pick_next(void);
+```
+
+`scheduler_add_thread()` 接收 runnable 且尚未連入任何 queue 的 thread，包含 idle；
+`scheduler_pick_next()` 從非空 queue 選出下一個 thread 並移出 queue。
+Idle 永遠 runnable，確保有候選者。兩者都要求 thread system 已初始化且 IRQ 已遮蔽，不配置記憶體、
+不切換 context；前者不失敗，後者不回傳 NULL。
+
+目前採 round-robin：scheduler_add_thread 加到尾端，scheduler_pick_next 從前端取出，
+boot、idle 與一般 threads 使用相同規則，不因 zombies 優先選 idle。
+`schedule()` 負責 IRQ 保護、判斷 current thread 是否
+重新入隊與 context switch；新 thread 也透過同一個 scheduler_add_thread 介面加入排程。
+
 ### Thread Demo
 
-建立 `N > 2` 個 threads，各自執行十次迴圈。每次印出 thread ID 與目前計數，
-delay 後呼叫 `schedule()`，應能看到不同 threads 交錯輸出。
+Shell 提供 `thread_demo`，建立三個 threads，各自執行十次迴圈。每次印出 thread
+ID、目前計數與 SP，delay 後呼叫 `schedule()`，可觀察 round-robin 的交錯輸出。
+Runner 自然返回後，由 `thread_start()` 自動呼叫 `thread_exit()`，不需在 runner
+內自行處理 thread 結束。
 
-所有 threads 返回後，idle thread 應能回收其 stack 與 metadata，並在沒有其他
-runnable threads 時繼續執行。
+```text
+$ buddy
+$ thread_demo
+$ buddy
+```
+
+初版保留 shell 為 boot thread（ID 0），idle 為 ID 1，動態建立的 threads 從 ID 2
+開始，退出後 ID 可重用。每個動態 thread 透過 `malloc/free` 配置與釋放 15 KiB
+stack 空間，不額外配置 alignment 預留。`stack_allocation` 保存原始位址供 free
+使用，`stack_bottom` 向上、`stack_top` 向下對齊 16 bytes，初始 SP 設為 top。
+設定值代表配置大小；依目前 allocator 的 8-byte alignment 保證，實際可用容量
+可能減少 16 bytes。以目前 4 KiB pages 計算，含 allocation header 仍占四頁。
+Run queue 保存等待執行的 threads，包含等待中的 boot 與 idle，但不包含 current。
+初始化時 boot 正在執行，只將 idle 入隊；boot 呼叫 `schedule()` 時才重新入隊。
+
+Idle 的 metadata 維持靜態，stack 則在 `thread_init()` 中透過 dynamic allocator
+配置，使用與一般 thread 相同的大小與 SP 對齊方式，並保留至 kernel 結束。
+配置失敗時 `thread_init()` 回傳 false，不啟用 thread system。
+Idle 參與一般 round-robin，每輪最多回收 `CONFIG_THREAD_REAP_LIMIT` 個 zombies，
+預設為 1，且每回收一個才遮蔽 IRQ，完成後還原，再處理下一個。
+即使還有 zombies，達到上限後仍呼叫 `schedule()` 讓出 CPU；沒有 zombies 時直接 yield。
+Demo 等到 idle 回收全部 stack 與 metadata 後才返回 shell，並印出 `outstanding: 0`；
+前後兩次 `buddy` 的 free page 總數應相同。
+
+目前是 cooperative scheduling：必須主動 yield，且不得從 IRQ、deferred callback
+或 EL0 呼叫 `schedule()`。Thread 建立失敗時回傳 -1，已建立的 threads 仍會執行
+並回收；boot 與 idle 不可呼叫 `thread_exit()`。
+
+ID 容量由 `CONFIG_THREAD_ID_COUNT` 設定，預設 256 slots，扣除 boot／idle 後
+可供 254 個尚未退出的 threads 使用。`free_id_next[]` 以 index 串接 free IDs：
+`[0]` 保存 head、`[1]` 保存 tail，鏈結以 1 結尾。取空後 head 為 1，此時 tail
+沒有意義，不應讀取。歸還時若 list 為空就設定 head，否則接到舊 tail，最後更新 tail。
+配置與歸還皆為 O(1)；256 slots 以下使用 `uint8_t`，更大容量使用 `uint16_t`。
+
+ID 在 thread 退出時歸還到 tail，zombie 的 ID 設為 -1；idle 只依 pointer 回收
+stack 與 metadata，不會再次歸還 ID。建立途中若配置記憶體失敗，也會歸還已取得的
+ID。目前沒有 wait 語意，因此 ID 釋放與記憶體回收分開處理。
 
 ## Goal 2: Kernel Preemption
 

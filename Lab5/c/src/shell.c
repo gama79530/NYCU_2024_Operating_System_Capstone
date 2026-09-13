@@ -12,8 +12,10 @@
 #include "power.h"
 #include "printf.h"
 #include "string.h"
+#include "thread.h"
 #include "timer.h"
 #include "types.h"
+#include "util.h"
 
 /* Private types */
 
@@ -118,6 +120,11 @@ static void cmd_free(size_t argc, char *argv[]);
 /* Run the scripted dynamic allocator and buddy system demonstration. */
 static void cmd_kmem_demo(size_t argc, char *argv[]);
 
+/** Run three cooperative threads and wait until idle has reclaimed them. */
+static void cmd_thread_demo(size_t argc, char *argv[]);
+/** Print the current thread's ID, counter, and SP, yielding each iteration. */
+static void thread_demo_entry(void);
+
 /* Print buddy allocator state and free blocks by order. */
 static void cmd_buddy(size_t argc, char *argv[]);
 
@@ -162,6 +169,7 @@ static const command_t commands[] = {
     {"malloc", "malloc <bytes>", "Allocate bytes from the kernel allocator", cmd_malloc},
     {"free", "free <address>", "Release a kernel allocation by address", cmd_free},
     {"kmem_demo", "kmem_demo", "Demonstrate dynamic and buddy allocation", cmd_kmem_demo},
+    {"thread_demo", "thread_demo", "Demonstrate kernel threads and idle reclamation", cmd_thread_demo},
     {"buddy", "buddy", "Print buddy allocator state", cmd_buddy},
     {"dtb", "dtb", "Print devicetree initramfs information", cmd_dtb},
     {"setTimeout", "setTimeout [message] [seconds]", "Print a message after a timeout", cmd_set_timeout},
@@ -435,6 +443,52 @@ static void cmd_hello(size_t argc, char *argv[])
     }
 
     printf("Hello World!\n");
+}
+
+static void thread_demo_entry(void)
+{
+    int id = thread_current_id();
+
+    for (int i = 0; i < 10; i++) {
+        uintptr_t sp;
+
+        asm volatile("mov %0, sp" : "=r"(sp));
+        printf("Thread id: %d count: %d sp: 0x%08x\n", id, i, (uint32_t) sp);
+        wait_cycles(1000000);
+        schedule();
+    }
+}
+
+static void cmd_thread_demo(size_t argc, char *argv[])
+{
+    int created = 0;
+
+    if (argc != 1) {
+        shell_print_usage(shell_find_command(argv[0]));
+        return;
+    }
+
+    if (thread_current_id() != 0 || thread_count() != 0) {
+        printf("thread_demo requires the boot thread and no outstanding threads.\n");
+        return;
+    }
+
+    for (int i = 0; i < 3; i++) {
+        int id = thread_create(thread_demo_entry);
+
+        if (id < 0) {
+            printf("thread_demo: thread creation failed.\n");
+            break;
+        }
+        created++;
+        printf("thread_demo: created thread %d\n", id);
+    }
+
+    while (thread_count() != 0) {
+        schedule();
+    }
+    printf("thread_demo: %d threads completed, outstanding: %u\n",
+           created, (uint32_t) thread_count());
 }
 
 static void cmd_mailbox(size_t argc, char *argv[])
