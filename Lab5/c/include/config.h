@@ -21,6 +21,13 @@
 #error "CONFIG_SHELL_MAX_ARGS must be at least 1"
 #endif
 
+#define CONFIG_SHELL_TIMEOUT_SECONDS 2
+#define CONFIG_SHELL_TIMEOUT_MESSAGE "timeout"
+
+#if CONFIG_SHELL_TIMEOUT_SECONDS < 1
+#error "CONFIG_SHELL_TIMEOUT_SECONDS must be at least 1"
+#endif
+
 /* mailbox.c */
 #define CONFIG_MAILBOX_TIMEOUT 1000000
 
@@ -137,13 +144,6 @@
 /* timer.c */
 #define CONFIG_TIMER_MAX_EVENTS 64
 #define CONFIG_TIMER_EVENT_CACHE_SIZE 16
-/*
- * Keep timer_event_t at 128 bytes on AArch64:
- * list_head_t(16) + expires_at(8) + callback(8) + message(96).
- */
-#define CONFIG_TIMER_MESSAGE_SIZE 96
-#define CONFIG_TIMER_DEFAULT_TIMEOUT_SECONDS 2
-#define CONFIG_TIMER_DEFAULT_MESSAGE "timeout"
 
 #if CONFIG_TIMER_MAX_EVENTS < 1
 #error "CONFIG_TIMER_MAX_EVENTS must be at least 1"
@@ -155,14 +155,6 @@
 
 #if CONFIG_TIMER_EVENT_CACHE_SIZE > CONFIG_TIMER_MAX_EVENTS
 #error "CONFIG_TIMER_EVENT_CACHE_SIZE must not exceed CONFIG_TIMER_MAX_EVENTS"
-#endif
-
-#if CONFIG_TIMER_MESSAGE_SIZE < 1
-#error "CONFIG_TIMER_MESSAGE_SIZE must be at least 1"
-#endif
-
-#if CONFIG_TIMER_DEFAULT_TIMEOUT_SECONDS < 1
-#error "CONFIG_TIMER_DEFAULT_TIMEOUT_SECONDS must be at least 1"
 #endif
 
 /* mini_uart.c */

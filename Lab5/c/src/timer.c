@@ -5,7 +5,6 @@
 #include "daif.h"
 #include "list.h"
 #include "peripheral.h"
-#include "string.h"
 #include "util.h"
 
 /* Private types */
@@ -14,7 +13,7 @@ typedef struct timer_event {
     list_head_t anchor;
     uint64_t expires_at;
     timer_callback_t callback;
-    char message[CONFIG_TIMER_MESSAGE_SIZE];
+    void *args;
 } timer_event_t;
 
 /* Private function declarations */
@@ -36,9 +35,6 @@ static timer_event_t *timer_alloc_event(void);
 
 /* Reset a timer event and cache or release it. */
 static void timer_free_event(timer_event_t *event);
-
-/* Copy message into the fixed-size event buffer. */
-static void timer_copy_message(timer_event_t *event, const char *message);
 
 /* Insert event by expiration time while preserving FIFO order for ties. */
 static bool timer_insert_event(timer_event_t *event);
@@ -85,14 +81,14 @@ void timer_handle_irq(void)
     timer_program_next_event();
 }
 
-bool timer_add_timeout(uint64_t seconds, const char *message, timer_callback_t callback)
+bool timer_add_timeout(uint64_t seconds, timer_callback_t callback, void *args)
 {
     timer_event_t *event;
     daif_irq_state_t daif_state;
     uint64_t now;
     uint64_t duration;
 
-    if (seconds == 0 || message == NULL || callback == NULL || counter_frequency == 0) {
+    if (seconds == 0 || callback == NULL || counter_frequency == 0) {
         return false;
     }
 
@@ -115,7 +111,7 @@ bool timer_add_timeout(uint64_t seconds, const char *message, timer_callback_t c
 
     event->expires_at = now + duration;
     event->callback = callback;
-    timer_copy_message(event, message);
+    event->args = args;
 
     if (!timer_insert_event(event)) {
         timer_free_event(event);
@@ -198,7 +194,7 @@ static void timer_free_event(timer_event_t *event)
 
     event->expires_at = 0;
     event->callback = NULL;
-    event->message[0] = '\0';
+    event->args = NULL;
     active_count--;
 
     if (!kernel_allocator_is_ready() || cached_count < CONFIG_TIMER_EVENT_CACHE_SIZE) {
@@ -207,20 +203,6 @@ static void timer_free_event(timer_event_t *event)
     } else {
         free(event);
     }
-}
-
-static void timer_copy_message(timer_event_t *event, const char *message)
-{
-    size_t length = strlen(message);
-
-    if (length >= CONFIG_TIMER_MESSAGE_SIZE) {
-        length = CONFIG_TIMER_MESSAGE_SIZE - 1;
-    }
-
-    for (size_t i = 0; i < length; i++) {
-        event->message[i] = message[i];
-    }
-    event->message[length] = '\0';
 }
 
 static bool timer_insert_event(timer_event_t *event)
@@ -256,7 +238,7 @@ static void timer_run_expired_events(void)
         list_remove(&event->anchor);
 
         daif_irq_enable();
-        event->callback(event->message, timer_current_seconds());
+        event->callback(event->args);
         daif_irq_disable();
 
         timer_free_event(event);

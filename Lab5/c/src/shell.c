@@ -51,8 +51,8 @@ static void shell_clear_prompt_line(size_t buffer_length);
 /* Redraw the prompt and the buffered input line. */
 static void shell_redraw_prompt(const char *buffer);
 
-/* Print a timeout message without losing the current input line. */
-static void shell_print_timeout_message(const char *message, uint64_t current_seconds);
+/** Print the saved timeout message, redraw input, and free the owned string. */
+static void shell_print_timeout_message(void *args);
 
 /*
  * Read one line from Mini UART into buffer.
@@ -258,19 +258,22 @@ static void shell_redraw_prompt(const char *buffer)
     printf(SHELL_PROMPT "%s", buffer);
 }
 
-static void shell_print_timeout_message(const char *message, uint64_t current_seconds)
+static void shell_print_timeout_message(void *args)
 {
+    char *message = (char *) args;
+
     if (shell_input_active) {
         shell_clear_prompt_line(shell_line_length);
     }
 
     printf("[Timeout at %u seconds since booting]: %s\n",
-           (unsigned int) current_seconds,
+           (unsigned int) timer_current_seconds(),
            message);
 
     if (shell_input_active) {
         shell_redraw_prompt(shell_line_buffer);
     }
+    free(message);
 }
 
 static shell_error_t shell_read_line(char *buffer, size_t capacity)
@@ -830,8 +833,10 @@ static void cmd_dtb(size_t argc, char *argv[])
 
 static void cmd_set_timeout(size_t argc, char *argv[])
 {
-    const char *message = CONFIG_TIMER_DEFAULT_MESSAGE;
-    size_t seconds = CONFIG_TIMER_DEFAULT_TIMEOUT_SECONDS;
+    const char *message = CONFIG_SHELL_TIMEOUT_MESSAGE;
+    size_t seconds = CONFIG_SHELL_TIMEOUT_SECONDS;
+    char *args;
+    size_t message_size;
 
     if (argc > 3) {
         shell_print_usage(shell_find_command(argv[0]));
@@ -850,7 +855,19 @@ static void cmd_set_timeout(size_t argc, char *argv[])
     printf("<Timer>: current time: %u seconds since booting.\n",
            (unsigned int) timer_current_seconds());
 
-    if (!timer_add_timeout((uint64_t) seconds, message, shell_print_timeout_message)) {
+    message_size = strlen(message) + 1;
+    args = malloc(message_size);
+    if (args == NULL) {
+        printf("Timer error: failed to allocate timeout arguments.\n");
+        return;
+    }
+    /* Shell input is reused immediately; keep this message alive until delivery. */
+    for (size_t i = 0; i < message_size; i++) {
+        args[i] = message[i];
+    }
+
+    if (!timer_add_timeout((uint64_t) seconds, shell_print_timeout_message, args)) {
+        free(args);
         printf("Timer error: failed to add timeout.\n");
     }
 }
