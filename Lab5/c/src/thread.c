@@ -3,17 +3,12 @@
 #include "allocator.h"
 #include "config.h"
 #include "daif.h"
+#include "id_pool.h"
 #include "list.h"
 #include "printf.h"
 #include "util.h"
 
 /* Private types */
-
-#if CONFIG_THREAD_ID_COUNT <= 256
-typedef uint8_t thread_id_link_t;
-#else
-typedef uint16_t thread_id_link_t;
-#endif
 
 typedef struct {
     uint64_t x19_x28[10];
@@ -76,19 +71,9 @@ static _Noreturn void thread_start(void);
 static void idle_entry(void);
 /** Reclaim at most CONFIG_THREAD_REAP_LIMIT zombies, masking IRQ per reclamation. */
 static void reap_zombies(void);
-/** Initialize the free-ID chain and its head/tail slots with IRQ masked. */
-static void thread_ids_init(void);
-/** Pop a free ID with IRQ masked; return -1 if the list is empty. */
-static int thread_id_allocate(void);
-/** Append an allocated ID with IRQ masked; each ID must be released once. */
-static void thread_id_release(int id);
 
 /* Private constants */
 
-#define THREAD_ID_HEAD 0
-#define THREAD_ID_TAIL 1
-#define THREAD_ID_END THREAD_ID_TAIL
-#define THREAD_ID_FIRST 2
 #define THREAD_STACK_ALIGNMENT 16UL
 
 /* Private data */
@@ -99,47 +84,13 @@ static thread_t idle_thread;
 static LIST_HEAD(run_queue);
 static LIST_HEAD(zombies);
 static size_t allocated_threads;
-/* [0] holds head, [1] holds tail; free entries link by index, ending at 1.
- * Empty: head = 1; tail is unspecified and must not be read until non-empty. */
-static thread_id_link_t free_id_next[CONFIG_THREAD_ID_COUNT];
+static id_pool_t *thread_ids;
 static bool initialized;
 
 extern char kernel_stack_bottom;
 extern char kernel_stack_top;
 
 /* Function implementations */
-
-static void thread_ids_init(void)
-{
-    free_id_next[THREAD_ID_HEAD] = THREAD_ID_FIRST;
-    free_id_next[THREAD_ID_TAIL] = CONFIG_THREAD_ID_COUNT - 1;
-    for (size_t id = THREAD_ID_FIRST; id < CONFIG_THREAD_ID_COUNT - 1; id++) {
-        free_id_next[id] = id + 1;
-    }
-    free_id_next[CONFIG_THREAD_ID_COUNT - 1] = THREAD_ID_END;
-}
-
-static int thread_id_allocate(void)
-{
-    int id = free_id_next[THREAD_ID_HEAD];
-
-    if (id == THREAD_ID_END) {
-        return -1;
-    }
-    free_id_next[THREAD_ID_HEAD] = free_id_next[id];
-    return id;
-}
-
-static void thread_id_release(int id)
-{
-    free_id_next[id] = THREAD_ID_END;
-    if (free_id_next[THREAD_ID_HEAD] == THREAD_ID_END) {
-        free_id_next[THREAD_ID_HEAD] = id;
-    } else {
-        free_id_next[free_id_next[THREAD_ID_TAIL]] = id;
-    }
-    free_id_next[THREAD_ID_TAIL] = id;
-}
 
 static thread_t *thread_current(void)
 {
@@ -182,7 +133,13 @@ bool thread_init(void)
         return false;
     }
 
-    thread_ids_init();
+    /* IDs 0 and 1 belong to boot and idle; pool metadata occupies two slots. */
+    thread_ids = id_pool_create(CONFIG_THREAD_ID_COUNT);
+    if (thread_ids == NULL) {
+        free(stack);
+        daif_irq_restore(irq);
+        return false;
+    }
     LIST_INIT(&boot_thread.anchor);
     boot_thread.id = 0;
     boot_thread.state = THREAD_RUNNABLE;
@@ -214,7 +171,7 @@ int thread_create(thread_entry_t entry)
         daif_irq_restore(irq);
         return -1;
     }
-    id = thread_id_allocate();
+    id = id_pool_alloc(thread_ids);
     if (id < 0) {
         daif_irq_restore(irq);
         return -1;
@@ -222,14 +179,14 @@ int thread_create(thread_entry_t entry)
 
     thread = malloc(sizeof(*thread));
     if (thread == NULL) {
-        thread_id_release(id);
+        id_pool_release(thread_ids, id);
         daif_irq_restore(irq);
         return -1;
     }
     stack = malloc(CONFIG_THREAD_STACK_SIZE);
     if (stack == NULL) {
         free(thread);
-        thread_id_release(id);
+        id_pool_release(thread_ids, id);
         daif_irq_restore(irq);
         return -1;
     }
@@ -319,7 +276,7 @@ _Noreturn void thread_exit(void)
     }
     thread->state = THREAD_DEAD;
     /* No wait API retains this ID; idle later frees memory by pointer only. */
-    thread_id_release(thread->id);
+    id_pool_release(thread_ids, thread->id);
     thread->id = -1;
     list_add_last(&thread->anchor, &zombies);
     schedule();
