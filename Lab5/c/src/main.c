@@ -63,7 +63,6 @@ void main(uint64_t dtb_addr)
     mini_uart_init();
     init_printf(NULL, printf_putc);
     simple_allocator_init();
-    timer_init();
 
     /*
      * Keep QEMU's default initramfs range as a fallback. The DTB path below
@@ -94,6 +93,10 @@ void main(uint64_t dtb_addr)
         printf("Buddy system initialization failed.\n");
     } else if (!kernel_allocator_init()) {
         printf("Dynamic allocator initialization failed.\n");
+    }
+
+    if (!timer_init()) {
+        printf("Timer initialization failed.\n");
     }
 
     if (!thread_init()) {

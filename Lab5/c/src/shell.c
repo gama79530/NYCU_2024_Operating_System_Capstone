@@ -51,7 +51,7 @@ static void shell_clear_prompt_line(size_t buffer_length);
 /* Redraw the prompt and the buffered input line. */
 static void shell_redraw_prompt(const char *buffer);
 
-/** Print the saved timeout message, redraw input, and free the owned string. */
+/** Print the saved timeout message and redraw input; timer cleanup frees it. */
 static void shell_print_timeout_message(void *args);
 
 /*
@@ -273,7 +273,6 @@ static void shell_print_timeout_message(void *args)
     if (shell_input_active) {
         shell_redraw_prompt(shell_line_buffer);
     }
-    free(message);
 }
 
 static shell_error_t shell_read_line(char *buffer, size_t capacity)
@@ -866,7 +865,8 @@ static void cmd_set_timeout(size_t argc, char *argv[])
         args[i] = message[i];
     }
 
-    if (!timer_add_timeout((uint64_t) seconds, shell_print_timeout_message, args)) {
+    if (timer_add_timeout(TIMER_UNIT_SECONDS, (uint64_t) seconds, false,
+                          shell_print_timeout_message, args) < 0) {
         free(args);
         printf("Timer error: failed to add timeout.\n");
     }
