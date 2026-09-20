@@ -51,6 +51,9 @@ int timer_add_timeout(timer_time_unit_t unit, uint64_t duration, bool periodic,
  */
 bool timer_stop_periodic(int id);
 
+/** Return ticks per second, or zero before successful initialization. */
+uint64_t timer_counter_frequency(void);
+
 /* Return the number of seconds since the physical counter started. */
 uint64_t timer_current_seconds(void);
 

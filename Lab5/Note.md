@@ -137,8 +137,31 @@ interrupts 的方式避免多工問題。
 
 ### Preemption Demo
 
-讓多個 kernel threads 持續輸出各自的 ID 與計數，不主動呼叫 `schedule()`，
-確認 timer 能使它們輪流執行，且結束後仍可正常回收。
+保留 `thread_demo` 每輪主動呼叫 `schedule()` 的方式，觀察 timer preemption 與
+yield 同時運作時，各 thread 的輸出順序變化，並確認結束後仍可正常回收。
+另外以暫時測試驗證不主動 yield 的 threads 仍能輪流執行，不增加額外 shell 指令。
+
+Scheduling tick 使用 periodic event，只標記重新排程需求；最外層 IRQ 收尾後才切換，
+確保 timer 已重新設定、deferred callback 的共享狀態已還原。這版只搶佔 EL1 kernel
+threads；IRQ/deferred callbacks 中途不切換 thread，因此長 callback 仍會延後搶佔。
+每次 tick 的間隔從 callback 返回後計算，允許漂移，不補跑錯過的週期。
+
+這是目前選擇的 scheduling policy，不是 ARM 或 context switch 必須遵守的規則。
+允許 nested IRQ，只代表 handler 能被另一個 IRQ 打斷，不代表它已能安全地與其他
+threads 交錯執行。`reschedule_pending` 記錄尚未處理的排程需求，`exception_depth`
+則讓內層 IRQ 返回時先保留需求，等最外層收尾再切換。
+
+採用這個 policy 是為了沿用目前 `task_queue` 的全域 `task_running` 與
+`current_task_priority`：它們假設 callback 依巢狀順序執行、返回並還原狀態。
+若在內層 IRQ 收尾時切換 thread，外層 callback 尚未還原的狀態就可能影響另一個
+thread 的 deferred task 執行。代價是長 callback 會延後 thread 搶佔，因此 callback
+應保持短小。
+
+也可以選擇允許 callback 中途被 thread 搶佔，但必須重新設計共享狀態與同步方式，
+不能只移除 depth 判斷。另一個方向是把耗時工作交給 kernel worker thread，讓
+硬體 IRQ 處理保持短小，後續工作再由 scheduler 排程；不需要所有 IRQ 衍生工作
+都完成後才能切換。至於在 timer callback 直接呼叫 `schedule()` 前，必須先安排好
+下一次 timer，這是另一個獨立的執行順序問題，不是 depth 判斷本身的理由。
 
 ## Goal 3: User Process and Basic System Calls
 

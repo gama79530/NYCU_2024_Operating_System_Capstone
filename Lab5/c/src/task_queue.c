@@ -80,13 +80,16 @@ bool task_queue_push(task_priority_t priority, task_callback_t callback, void *d
 {
     task_node_t *task;
     list_head_t *cursor;
+    daif_irq_state_t irq;
 
     if (callback == NULL) {
         return false;
     }
 
+    irq = daif_irq_save();
     task = task_alloc();
     if (task == NULL) {
+        daif_irq_restore(irq);
         return false;
     }
 
@@ -99,11 +102,13 @@ bool task_queue_push(task_priority_t priority, task_callback_t callback, void *d
         task_node_t *queued_task = container_of(cursor, task_node_t, anchor);
         if (queued_task->priority > priority) {
             list_add(&task->anchor, cursor->prev, cursor);
+            daif_irq_restore(irq);
             return true;
         }
     }
 
     list_add_last(&task->anchor, &pending_queue);
+    daif_irq_restore(irq);
     return true;
 }
 

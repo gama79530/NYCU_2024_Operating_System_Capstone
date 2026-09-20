@@ -6,6 +6,7 @@
 #include "id_pool.h"
 #include "list.h"
 #include "printf.h"
+#include "timer.h"
 #include "util.h"
 
 /* Private types */
@@ -67,6 +68,8 @@ static void scheduler_add_thread(thread_t *thread);
 static thread_t *scheduler_pick_next(void);
 /** Enable IRQ, run the thread entry, and exit automatically when it returns. */
 static _Noreturn void thread_start(void);
+/** Mark a scheduling request; switching waits until outer IRQ exit. */
+static void scheduling_tick(void *args);
 /** Reclaim zombies and yield to runnable threads in the idle loop. */
 static void idle_entry(void);
 /** Reclaim at most CONFIG_THREAD_REAP_LIMIT zombies, masking IRQ per reclamation. */
@@ -86,6 +89,8 @@ static LIST_HEAD(zombies);
 static size_t allocated_threads;
 static id_pool_t *thread_ids;
 static bool initialized;
+static bool reschedule_pending;
+static bool preemption_started;
 
 extern char kernel_stack_bottom;
 extern char kernel_stack_top;
@@ -160,6 +165,38 @@ bool thread_init(void)
     return true;
 }
 
+static void scheduling_tick(void *args)
+{
+    (void) args;
+    reschedule_pending = true;
+}
+
+bool thread_start_preemption(void)
+{
+    daif_irq_state_t irq = daif_irq_save();
+    uint64_t interval = timer_counter_frequency() >> 5;
+
+    if (preemption_started) {
+        daif_irq_restore(irq);
+        return true;
+    }
+    if (!initialized || interval == 0 ||
+        timer_add_timeout(TIMER_UNIT_TICKS, interval, true, scheduling_tick, NULL) < 0) {
+        daif_irq_restore(irq);
+        return false;
+    }
+    preemption_started = true;
+    daif_irq_restore(irq);
+    return true;
+}
+
+void thread_preempt(void)
+{
+    if (reschedule_pending) {
+        schedule();
+    }
+}
+
 int thread_create(thread_entry_t entry)
 {
     thread_t *thread;
@@ -211,7 +248,11 @@ int thread_current_id(void)
 
 size_t thread_count(void)
 {
-    return allocated_threads;
+    daif_irq_state_t irq = daif_irq_save();
+    size_t count = allocated_threads;
+
+    daif_irq_restore(irq);
+    return count;
 }
 
 static void scheduler_add_thread(thread_t *thread)
@@ -241,6 +282,8 @@ void schedule(void)
         return;
     }
 
+    /* A voluntary yield also satisfies any pending scheduling request. */
+    reschedule_pending = false;
     prev = thread_current();
     if (prev->state == THREAD_RUNNABLE) {
         scheduler_add_thread(prev);

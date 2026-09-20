@@ -103,6 +103,10 @@ void main(uint64_t dtb_addr)
         printf("Thread system initialization failed.\n");
     }
 
+    if (!thread_start_preemption()) {
+        printf("Kernel preemption initialization failed.\n");
+    }
+
     /* enter simple shell on the boot thread */
     mini_uart_enable_async();
     /*

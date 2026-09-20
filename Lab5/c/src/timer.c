@@ -159,6 +159,11 @@ bool timer_stop_periodic(int id)
     return false;
 }
 
+uint64_t timer_counter_frequency(void)
+{
+    return counter_frequency;
+}
+
 uint64_t timer_current_seconds(void)
 {
     if (counter_frequency == 0) {

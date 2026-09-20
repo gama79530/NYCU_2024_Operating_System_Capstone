@@ -20,6 +20,13 @@ typedef void (*thread_entry_t)(void);
 /* Register the boot thread and initialize idle. Requires the dynamic allocator. */
 bool thread_init(void);
 
+/** Register the periodic scheduling event after timer/thread initialization. */
+bool thread_start_preemption(void);
+
+/** Honor a pending scheduling tick at outer IRQ exit, with IRQ masked.
+ * All IRQ callbacks/shared dispatch state must be unwound before calling. */
+void thread_preempt(void);
+
 /* Create a runnable kernel thread; return its ID, or -1 on failure.
  * IDs may be reused after exit, before idle reclaims the old thread's memory. */
 int thread_create(thread_entry_t entry);

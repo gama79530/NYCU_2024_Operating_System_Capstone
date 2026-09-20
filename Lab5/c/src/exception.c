@@ -1,9 +1,11 @@
 #include "exception.h"
 
+#include "daif.h"
 #include "mini_uart.h"
 #include "printf.h"
 #include "task_queue.h"
 #include "timer.h"
+#include "thread.h"
 
 /* Private types */
 
@@ -56,6 +58,9 @@ static void handle_fiq_exception(exception_origin_t origin);
 static void handle_serror_exception(exception_origin_t origin);
 
 /* Private data */
+
+/* Single-core nesting depth; restore it before switching away from IRQ exit. */
+static size_t exception_depth;
 
 /* Function implementations */
 
@@ -172,6 +177,7 @@ void exception_dispatch(exception_frame_t *frame,
                         exception_origin_t origin,
                         exception_class_t exception_class)
 {
+    exception_depth++;
     switch (exception_class) {
     case EXCEPTION_CLASS_SYNC:
         dispatch_sync_exception(frame, origin);
@@ -188,5 +194,15 @@ void exception_dispatch(exception_frame_t *frame,
     default:
         printf("Unhandled exception class: %u\n", (uint32_t) exception_class);
         break;
+    }
+    daif_irq_disable();
+    exception_depth--;
+    /* Nested handlers leave requests pending until shared callback state unwinds.
+     * EL0 switching is deferred to the user-process goal. IRQ remains masked
+     * through schedule(); assembly restores this thread's frame with eret. */
+    if (exception_depth == 0 && exception_class == EXCEPTION_CLASS_IRQ &&
+        origin == EXCEPTION_ORIGIN_CURRENT_SPX &&
+        (frame->spsr_el1 & DAIF_IRQ_MASK) == 0) {
+        thread_preempt();
     }
 }

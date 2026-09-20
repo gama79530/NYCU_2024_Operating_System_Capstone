@@ -19,7 +19,8 @@ typedef enum {
 bool task_queue_push(task_priority_t priority, task_callback_t callback, void *data);
 
 /*
- * Run queued tasks with IRQ enabled.
+ * Run queued tasks with IRQ enabled. Call only from IRQ dispatch with IRQ masked;
+ * returns with IRQ masked. Thread switching must wait until dispatch unwinds.
  *
  * A nested invocation only runs tasks whose priority is higher than the task
  * it interrupted. The outer invocation resumes the remaining queue afterward.

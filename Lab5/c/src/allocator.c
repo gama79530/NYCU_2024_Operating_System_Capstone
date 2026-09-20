@@ -109,19 +109,23 @@ void *simple_malloc(size_t size)
 {
     uintptr_t allocated;
     uintptr_t next;
+    daif_irq_state_t irq;
 
     if (size == 0) {
         return NULL;
     }
 
+    irq = daif_irq_save();
     allocated = heap_current;
     next = align_up(allocated + size, KERNEL_ALLOC_ALIGNMENT);
 
     if (next < allocated || next > heap_end) {
+        daif_irq_restore(irq);
         return NULL;
     }
 
     heap_current = next;
+    daif_irq_restore(irq);
     return (void *) allocated;
 }
 
