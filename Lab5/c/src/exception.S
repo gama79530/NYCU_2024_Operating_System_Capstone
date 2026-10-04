@@ -16,7 +16,7 @@
 #define EXCEPTION_FRAME_REGS_24_25 192
 #define EXCEPTION_FRAME_REGS_26_27 208
 #define EXCEPTION_FRAME_REGS_28_29 224
-#define EXCEPTION_FRAME_REGS_30_RESERVED 240
+#define EXCEPTION_FRAME_REGS_30_SP_EL0 240
 #define EXCEPTION_FRAME_SPSR_EL1_ELR_EL1 256
 
 .section ".text"
@@ -47,7 +47,8 @@
     stp     x24, x25, [sp, #EXCEPTION_FRAME_REGS_24_25]
     stp     x26, x27, [sp, #EXCEPTION_FRAME_REGS_26_27]
     stp     x28, x29, [sp, #EXCEPTION_FRAME_REGS_28_29]
-    stp     x30, xzr, [sp, #EXCEPTION_FRAME_REGS_30_RESERVED]
+    mrs     x0, sp_el0
+    stp     x30, x0, [sp, #EXCEPTION_FRAME_REGS_30_SP_EL0]
 
     mrs     x0, spsr_el1
     mrs     x1, elr_el1
@@ -128,13 +129,22 @@ exception_entry lower_aarch32_irq_entry, EXCEPTION_ORIGIN_LOWER_AARCH32_VALUE, E
 exception_entry lower_aarch32_fiq_entry, EXCEPTION_ORIGIN_LOWER_AARCH32_VALUE, EXCEPTION_CLASS_FIQ_VALUE
 exception_entry lower_aarch32_serror_entry, EXCEPTION_ORIGIN_LOWER_AARCH32_VALUE, EXCEPTION_CLASS_SERROR_VALUE
 
+/* A newly created/forked user thread starts from a prepared frame. */
+.global exception_return
+.type exception_return, %function
+exception_return:
+    mov     sp, x0
+    b       restore_exception_frame
+.size exception_return, . - exception_return
+
 // Restore exception_frame_t and return to the interrupted context.
 restore_exception_frame:
     ldp     x0, x1, [sp, #EXCEPTION_FRAME_SPSR_EL1_ELR_EL1]
-    msr     spsr_el1, x0
     msr     elr_el1, x1
+    msr     spsr_el1, x0
 
-    ldp     x30, xzr, [sp, #EXCEPTION_FRAME_REGS_30_RESERVED]
+    ldp     x30, x0, [sp, #EXCEPTION_FRAME_REGS_30_SP_EL0]
+    msr     sp_el0, x0
     ldp     x28, x29, [sp, #EXCEPTION_FRAME_REGS_28_29]
     ldp     x26, x27, [sp, #EXCEPTION_FRAME_REGS_26_27]
     ldp     x24, x25, [sp, #EXCEPTION_FRAME_REGS_24_25]

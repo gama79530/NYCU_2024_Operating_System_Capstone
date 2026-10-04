@@ -1,6 +1,7 @@
 #include "thread.h"
 
 #include "allocator.h"
+#include "arm_v8.h"
 #include "config.h"
 #include "daif.h"
 #include "id_pool.h"
@@ -30,6 +31,10 @@ typedef struct {
     void *stack_allocation; /* Original malloc address, used by free(). */
     uintptr_t stack_bottom; /* First usable byte, aligned upward. */
     uintptr_t stack_top;    /* One past the usable range, aligned downward. */
+    void *user_stack_allocation;
+    uintptr_t user_stack_bottom;
+    uintptr_t user_stack_top;
+    exception_frame_t *user_frame; /* Initial frame at the kernel stack top. */
     int id;
     thread_state_t state;
 } thread_t;
@@ -45,7 +50,28 @@ _Static_assert(offsetof(cpu_context_t, lr) == THREAD_CONTEXT_FP_LR + 8, "lr offs
 _Static_assert(offsetof(cpu_context_t, sp) == THREAD_CONTEXT_SP, "sp offset");
 _Static_assert(sizeof(cpu_context_t) == THREAD_CONTEXT_SIZE, "context size");
 
+_Static_assert(sizeof(exception_frame_t) == 272, "exception assembly frame size");
+_Static_assert(offsetof(exception_frame_t, sp_el0) == 248, "SP_EL0 assembly offset");
+_Static_assert(offsetof(exception_frame_t, spsr_el1) == 256, "SPSR assembly offset");
+
 /* Private function declarations */
+
+/** EL0 trampoline that invokes exit when the user entry returns. */
+extern void el0_thread_return(void);
+/** Allocate metadata, ID and kernel stack with IRQ masked; do not enqueue. */
+static thread_t *thread_alloc(void);
+/** Release an unpublished thread's allocations and ID with IRQ masked. */
+static void thread_discard(thread_t *thread);
+/** Allocate an unpublished thread's user stack and prepare its frame/start context.
+ * Requires IRQ masked; safe only before the thread has begun execution. */
+static bool thread_prepare_user(thread_t *thread);
+/** Publish a fully prepared thread to the run queue and count it, with IRQ masked. */
+static int thread_publish(thread_t *thread);
+/** Enter a prepared user frame without enabling IRQ on a partial context. */
+static _Noreturn void thread_user_start(void);
+/** Translate a value within the copied stack range to the child's stack. */
+static uint64_t relocate_stack_value(uint64_t value, uintptr_t begin,
+                                     uintptr_t end, uintptr_t child_begin);
 
 /** Save prev's CPU context and restore next's context with IRQ masked. */
 extern void switch_to(thread_t *prev, thread_t *next);
@@ -113,7 +139,7 @@ static void thread_set_stack(thread_t *thread, void *stack)
     thread->stack_allocation = stack;
     /* Trim both ends within the allocation instead of allocating alignment slack. */
     thread->stack_bottom = align_up(begin, THREAD_STACK_ALIGNMENT);
-    thread->stack_top = end & ~(THREAD_STACK_ALIGNMENT - 1);
+    thread->stack_top = align_down(end, THREAD_STACK_ALIGNMENT);
     thread->context.sp = thread->stack_top;
 }
 
@@ -197,46 +223,185 @@ void thread_preempt(void)
     }
 }
 
-int thread_create(thread_entry_t entry)
+static thread_t *thread_alloc(void)
 {
+    int id = id_pool_alloc(thread_ids);
     thread_t *thread;
     void *stack;
-    int id;
-    daif_irq_state_t irq = daif_irq_save();
 
-    if (!initialized || entry == NULL) {
-        daif_irq_restore(irq);
-        return -1;
-    }
-    id = id_pool_alloc(thread_ids);
     if (id < 0) {
-        daif_irq_restore(irq);
-        return -1;
+        return NULL;
     }
-
     thread = malloc(sizeof(*thread));
     if (thread == NULL) {
         id_pool_release(thread_ids, id);
-        daif_irq_restore(irq);
-        return -1;
+        return NULL;
     }
     stack = malloc(CONFIG_THREAD_STACK_SIZE);
     if (stack == NULL) {
         free(thread);
         id_pool_release(thread_ids, id);
-        daif_irq_restore(irq);
-        return -1;
+        return NULL;
     }
-
     memzero(thread, sizeof(*thread));
     LIST_INIT(&thread->anchor);
-    thread->entry = entry;
     thread_set_stack(thread, stack);
     thread->state = THREAD_RUNNABLE;
     thread->id = id;
-    thread->context.lr = (uintptr_t) thread_start;
+    return thread;
+}
+
+static void thread_discard(thread_t *thread)
+{
+    free(thread->user_stack_allocation);
+    free(thread->stack_allocation);
+    id_pool_release(thread_ids, thread->id);
+    free(thread);
+}
+
+static int thread_publish(thread_t *thread)
+{
     scheduler_add_thread(thread);
     allocated_threads++;
+    return thread->id;
+}
+
+int thread_create(thread_entry_t entry)
+{
+    daif_irq_state_t irq = daif_irq_save();
+    thread_t *thread;
+    int id;
+
+    if (!initialized || entry == NULL || (thread = thread_alloc()) == NULL) {
+        daif_irq_restore(irq);
+        return -1;
+    }
+    thread->entry = entry;
+    thread->context.lr = (uintptr_t) thread_start;
+    id = thread_publish(thread);
+    daif_irq_restore(irq);
+    return id;
+}
+
+static bool thread_prepare_user(thread_t *thread)
+{
+    uintptr_t begin;
+
+    thread->user_stack_allocation = malloc(CONFIG_USER_STACK_SIZE);
+    if (thread->user_stack_allocation == NULL) {
+        return false;
+    }
+    begin = (uintptr_t) thread->user_stack_allocation;
+    thread->user_stack_bottom = align_up(begin, THREAD_STACK_ALIGNMENT);
+    thread->user_stack_top = align_down(begin + CONFIG_USER_STACK_SIZE, THREAD_STACK_ALIGNMENT);
+    thread->user_frame = (exception_frame_t *) (thread->stack_top - sizeof(exception_frame_t));
+    memzero(thread->user_frame, sizeof(*thread->user_frame));
+    thread->context.sp = (uintptr_t) thread->user_frame;
+    thread->context.lr = (uintptr_t) thread_user_start;
+    return true;
+}
+
+static _Noreturn void thread_user_start(void)
+{
+    exception_return(thread_current()->user_frame);
+}
+
+int thread_create_user(thread_entry_t entry)
+{
+    daif_irq_state_t irq = daif_irq_save();
+    thread_t *thread;
+    int id;
+
+    if (!initialized || entry == NULL || (thread = thread_alloc()) == NULL) {
+        daif_irq_restore(irq);
+        return -1;
+    }
+    if (!thread_prepare_user(thread)) {
+        thread_discard(thread);
+        daif_irq_restore(irq);
+        return -1;
+    }
+    thread->entry = entry;
+    thread->user_frame->elr_el1 = (uintptr_t) entry;
+    thread->user_frame->sp_el0 = thread->user_stack_top;
+    thread->user_frame->spsr_el1 = SPSR_EL1_EL0T_DAIF_MASKED & ~SPSR_EL1_MASK_IRQ;
+    thread->user_frame->regs[30] = (uintptr_t) el0_thread_return;
+    id = thread_publish(thread);
+    daif_irq_restore(irq);
+    return id;
+}
+
+bool thread_is_user(void)
+{
+    return initialized && thread_current()->user_stack_allocation != NULL;
+}
+
+bool thread_user_buffer_valid(uintptr_t address, size_t size)
+{
+    thread_t *thread = initialized ? thread_current() : NULL;
+
+    return thread != NULL && thread->user_stack_allocation != NULL &&
+           address >= thread->user_stack_bottom && address <= thread->user_stack_top &&
+           size <= thread->user_stack_top - address;
+}
+
+static uint64_t relocate_stack_value(uint64_t value, uintptr_t begin,
+                                     uintptr_t end, uintptr_t child_begin)
+{
+    return value >= begin && value <= end ? child_begin + (value - begin) : value;
+}
+
+int thread_fork(exception_frame_t *frame)
+{
+    daif_irq_state_t irq = daif_irq_save();
+    thread_t *parent = initialized ? thread_current() : NULL;
+    thread_t *child;
+    uintptr_t begin;
+    uintptr_t child_begin;
+    size_t used;
+    int id;
+
+    if (parent == NULL || parent->user_stack_allocation == NULL || frame == NULL ||
+        frame->sp_el0 < parent->user_stack_bottom || frame->sp_el0 > parent->user_stack_top ||
+        (frame->sp_el0 & (THREAD_STACK_ALIGNMENT - 1)) != 0) {
+        daif_irq_restore(irq);
+        return -1;
+    }
+    child = thread_alloc();
+    if (child == NULL) {
+        daif_irq_restore(irq);
+        return -1;
+    }
+    if (!thread_prepare_user(child)) {
+        thread_discard(child);
+        daif_irq_restore(irq);
+        return -1;
+    }
+    begin = frame->sp_el0;
+    used = parent->user_stack_top - begin;
+    if (used > child->user_stack_top - child->user_stack_bottom) {
+        thread_discard(child);
+        daif_irq_restore(irq);
+        return -1;
+    }
+    child_begin = child->user_stack_top - used;
+    memcpy((void *) child_begin, (const void *) begin, used);
+    memcpy(child->user_frame, frame, sizeof(*frame));
+    /* No MMU: lab stack-only relocation treats stack-range words as pointers.
+     * This includes saved FP chains, but cannot distinguish an integer with the
+     * same value or find unaligned pointers. It is not a general POSIX fork. */
+    for (size_t i = 0; i < used / sizeof(uint64_t); i++) {
+        uint64_t *word = &((uint64_t *) child_begin)[i];
+        *word = relocate_stack_value(*word, begin, parent->user_stack_top, child_begin);
+    }
+    for (size_t i = 0; i < 31; i++) {
+        child->user_frame->regs[i] = relocate_stack_value(frame->regs[i], begin,
+                                                         parent->user_stack_top, child_begin);
+    }
+    child->user_frame->sp_el0 = child_begin;
+    child->user_frame->regs[0] = 0;
+    child->entry = parent->entry;
+    id = thread_publish(child);
     daif_irq_restore(irq);
     return id;
 }
@@ -338,6 +503,7 @@ static void reap_zombies(void)
         }
         thread = container_of(zombies.next, thread_t, anchor);
         list_remove(&thread->anchor);
+        free(thread->user_stack_allocation);
         free(thread->stack_allocation);
         free(thread);
         allocated_threads--;

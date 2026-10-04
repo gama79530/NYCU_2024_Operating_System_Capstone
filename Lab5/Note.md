@@ -142,14 +142,16 @@ yield 同時運作時，各 thread 的輸出順序變化，並確認結束後仍
 另外以暫時測試驗證不主動 yield 的 threads 仍能輪流執行，不增加額外 shell 指令。
 
 Scheduling tick 使用 periodic event，只標記重新排程需求；最外層 IRQ 收尾後才切換，
-確保 timer 已重新設定、deferred callback 的共享狀態已還原。這版只搶佔 EL1 kernel
+確保 timer 已重新設定、deferred callback 的共享狀態已還原。Goal 2 階段先只搶佔 EL1 kernel
 threads；IRQ/deferred callbacks 中途不切換 thread，因此長 callback 仍會延後搶佔。
 每次 tick 的間隔從 callback 返回後計算，允許漂移，不補跑錯過的週期。
 
 這是目前選擇的 scheduling policy，不是 ARM 或 context switch 必須遵守的規則。
 允許 nested IRQ，只代表 handler 能被另一個 IRQ 打斷，不代表它已能安全地與其他
 threads 交錯執行。`reschedule_pending` 記錄尚未處理的排程需求，`exception_depth`
-則讓內層 IRQ 返回時先保留需求，等最外層收尾再切換。
+計算 SYNC、IRQ、FIQ、SError 的 nesting，但排除 user 同步 exception。
+其餘 handlers 預設必須完成才允許切換；若內層 IRQ 收尾時 depth 尚未歸零，
+就保留排程需求，等後續符合條件的 IRQ 收尾再切換。
 
 採用這個 policy 是為了沿用目前 `task_queue` 的全域 `task_running` 與
 `current_task_priority`：它們假設 callback 依巢狀順序執行、返回並還原狀態。
@@ -197,6 +199,53 @@ Spec 的 API 說明使用 `exit()`，但測試程式 ABI 使用 `exit(int status
 
 以簡單的 EL0 程式驗證 getpid、UART 與 exit，再確認不主動 yield 的 user program
 仍能與其他 runnable threads 輪流執行。
+
+### 初版驗證：fork_test
+
+先使用內建的 `fork_test` 指令，在 EL0 執行 spec 的等價測試，暫不整合外部 user
+image。測試只使用 local variables，透過 `svc 0` 呼叫 getpid、uart_write、fork 與
+exit，印出 parent、child、grandchild 的 PID、counter、local address 與 SP。
+因此提前實作 Goal 4 的最小 fork；exec、mailbox、kill 仍留待後續完成。
+
+每個 user thread 有獨立的 allocator-owned kernel/user stack。`thread_create()`、
+`thread_create_user()` 與 `thread_fork()` 都採「配置資源 → 準備 context → 加入
+run queue」的流程，準備完成前不會被排程。配置與失敗清理使用共用 helper；
+發布則統一透過 `thread_publish()` 加入 queue 並更新數量。
+
+`thread_create_user()` 配置新的 metadata、ID、kernel/user stacks，在尚未執行的
+kernel stack 頂端直接準備初始 EL0 frame；成功回傳 ID，失敗清理資源並回傳 -1。
+Fork 共用 user stack 與 frame/start context 的配置，中間改為複製 parent stack
+與 frame、調整位址及回傳值，最後才發布 child。沒有轉換當前 kernel runner 的
+介面，也不需要額外搬移初始 frame；user exit 結束整個 thread。
+
+Exception frame 原本的 padding 改為保存 `SP_EL0`，與其他 registers 一起還原。
+初次執行與 fork child 都從準備好的 frame 透過 `eret` 進入 EL0；entry 返回時由 EL0 trampoline
+呼叫 exit。Idle 同時回收兩種 stack。已結束 process 的 stack 位址可能被後來的
+process 重用，所以不同時間印出的相同 SP 不一定表示它們同時共用 stack。
+
+EL0 syscall 屬於可排程的 thread context，不計入 `exception_depth`，因此
+UART 等待時其他 threads 仍能執行，exit 不返回也不會留下未歸零的 depth。
+User 同步 fault 也不計入，因為目前無法修復時會直接結束 thread。
+真正的 IRQ/deferred callbacks 仍採 Goal 2 的最外層收尾切換 policy。
+
+這個雛型沒有 MMU 或完整 memory isolation。Fork 複製使用中的 user stack 與
+trap frame，並將 registers、stack 中落在原 stack 範圍內的值搬到 child 對應位置，
+包含 saved FP chain。它無法分辨同值整數與 pointer，也不處理未對齊或存在其他
+記憶體中的 pointers，不是通用的 POSIX fork。Code/唯讀資料沿用 kernel image
+中的內建測試；UART syscall 暫時只接受目前 user stack 內的 buffer。
+exit 接受 status，但沒有 wait API，暫不保存 status。Unsupported syscall 回傳 -1。
+
+### 已知現象：UART 輸出交錯
+
+實體 Raspberry Pi 執行 `fork_test` 時，觀察到不同 threads 的輸出在同一行中途
+交錯，包含 user 的 UART write 與 boot thread 的 `printf()`；目前 QEMU 測試
+尚未重現。UART 逐字輸出期間允許 timer preemption，因此一次輸出並非 atomic，
+此現象本身不代表 fork context 錯誤。測試的等待迴圈維持 `schedule()` 主動 yield。
+
+先記錄並擱置輸出同步。若後續處理，需讓 kernel/user writers 共用序列化機制，
+並另行處理 IRQ context 的輸出；不能讓 IRQ 等待被它打斷的持鎖 thread。
+不以整段關 IRQ 的方式保護輸出，以免延後 preemption；read 也不應共用可能
+長時間等待的輸出鎖。
 
 ## Goal 4: Process Operations
 

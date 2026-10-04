@@ -14,6 +14,7 @@
 #ifndef __ASSEMBLER__
 
 #include "types.h"
+#include "exception.h"
 
 typedef void (*thread_entry_t)(void);
 
@@ -30,6 +31,21 @@ void thread_preempt(void);
 /* Create a runnable kernel thread; return its ID, or -1 on failure.
  * IDs may be reused after exit, before idle reclaims the old thread's memory. */
 int thread_create(thread_entry_t entry);
+
+/** Create a new runnable EL0 thread; return its ID, or -1 on failure.
+ * Owns separate kernel/user stacks; user exit terminates the entire thread.
+ * No image copy; entry must remain executable for the thread and all children. */
+int thread_create_user(thread_entry_t entry);
+
+/** Clone the current user's active stack and syscall frame; return child ID/-1.
+ * Supports the lab's stack-only fork model, not general pointer relocation. */
+int thread_fork(exception_frame_t *frame);
+
+/** Return whether the current thread owns an EL0 user context. */
+bool thread_is_user(void);
+
+/** Validate a byte range within the current user's stack (prototype UART buffers). */
+bool thread_user_buffer_valid(uintptr_t address, size_t size);
 
 /* Return the current thread ID (boot: 0, idle: 1), or -1 before initialization. */
 int thread_current_id(void);

@@ -178,6 +178,12 @@
 #error "CONFIG_MINI_UART_TX_BUFFER_SIZE must be a power of two"
 #endif
 
+/* User threads: conservative stack budget, using the same allocator policy. */
+#define CONFIG_USER_STACK_SIZE (15 * 1024)
+#if CONFIG_USER_STACK_SIZE < 4096 || (CONFIG_USER_STACK_SIZE % 16) != 0
+#error "CONFIG_USER_STACK_SIZE must be at least 4096 and a multiple of 16"
+#endif
+
 /* EL0 SVC demo */
 #define CONFIG_EL0_USER_ENTRY 0x00020000UL
 #define CONFIG_EL0_USER_STACK 0x00022000UL

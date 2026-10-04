@@ -5,10 +5,16 @@
 
 #define container_of(ptr, type, member) ((type *) ((void *) (ptr) - offsetof(type, member)))
 
-/* Round value up to the next multiple of alignment. */
+/** Round value upward to a multiple of alignment; alignment must be a nonzero power of two. */
 static inline uintptr_t align_up(uintptr_t value, uintptr_t alignment)
 {
     return (value + alignment - 1) & ~(alignment - 1);
+}
+
+/** Round value downward to a multiple of alignment; alignment must be a nonzero power of two. */
+static inline uintptr_t align_down(uintptr_t value, uintptr_t alignment)
+{
+    return value & ~(alignment - 1);
 }
 
 /* Read an unaligned big-endian 32-bit integer from bytes. */
@@ -47,6 +53,10 @@ void data_memory_barrier(void);
 void data_sync_barrier(void);
 
 /* Implemented in util.c. */
+/** Copy size bytes between non-overlapping memory ranges; return dest.
+ * Byte-wise access supports unaligned addresses. Not for memory-mapped I/O. */
+void *memcpy(void *dest, const void *src, size_t size);
+
 /* Busy-wait for approximately cycles loop iterations. */
 void wait_cycles(uint64_t cycles);
 

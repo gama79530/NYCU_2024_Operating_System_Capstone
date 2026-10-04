@@ -12,6 +12,7 @@
 #include "power.h"
 #include "printf.h"
 #include "string.h"
+#include "syscall.h"
 #include "thread.h"
 #include "timer.h"
 #include "types.h"
@@ -85,6 +86,12 @@ static void shell_print_usage(const command_t *command);
 /* Dispatch argc/argv to a registered shell command handler. */
 static void shell_dispatch(size_t argc, char *argv[]);
 
+/** Print one spec test line through uart_write; formatting uses a local buffer. */
+static void user_report(const char *role, int count, const int *address, uintptr_t sp, int child);
+
+/** Embedded EL0 version of the spec fork test; uses only stack-local state. */
+static void user_fork_test(void);
+
 /* Private command declarations */
 
 /* Print command help or the usage/details for one command. */
@@ -124,6 +131,8 @@ static void cmd_kmem_demo(size_t argc, char *argv[]);
 static void cmd_thread_demo(size_t argc, char *argv[]);
 /** Print the current thread's ID, counter, and SP, yielding each iteration. */
 static void thread_demo_entry(void);
+/** Launch the embedded EL0 fork test and wait for idle to reclaim its processes. */
+static void cmd_fork_test(size_t argc, char *argv[]);
 
 /* Print buddy allocator state and free blocks by order. */
 static void cmd_buddy(size_t argc, char *argv[]);
@@ -169,6 +178,7 @@ static const command_t commands[] = {
     {"malloc", "malloc <bytes>", "Allocate bytes from the kernel allocator", cmd_malloc},
     {"free", "free <address>", "Release a kernel allocation by address", cmd_free},
     {"kmem_demo", "kmem_demo", "Demonstrate dynamic and buddy allocation", cmd_kmem_demo},
+    {"fork_test", "fork_test", "Run the spec fork test in EL0", cmd_fork_test},
     {"thread_demo", "thread_demo", "Demonstrate kernel threads and idle reclamation", cmd_thread_demo},
     {"buddy", "buddy", "Print buddy allocator state", cmd_buddy},
     {"dtb", "dtb", "Print devicetree initramfs information", cmd_dtb},
@@ -491,6 +501,87 @@ static void cmd_thread_demo(size_t argc, char *argv[])
     }
     printf("thread_demo: %d threads completed, outstanding: %u\n",
            created, (uint32_t) thread_count());
+}
+
+static void user_report(const char *role, int count, const int *address, uintptr_t sp, int child)
+{
+    char buffer[192];
+    int pid = sys_getpid();
+
+    /* MMU is off: share linked read-only code, including this pure formatter.
+     * Do not call printf here: its kernel output hook accesses UART directly. */
+    sprintf(buffer, "%s pid: %d, cnt: %d, ptr: 0x%x, sp: 0x%x, child: 0x%d\n",
+            role, pid, count, (uint32_t) (uintptr_t) address, (uint32_t) sp, child);
+    sys_uart_write(buffer, strlen(buffer));
+}
+
+static void user_fork_test(void)
+{
+    int count = 1;
+    int child = sys_fork();
+    uintptr_t sp;
+
+    asm volatile("mov %0, sp" : "=r"(sp));
+    if (child < 0) {
+        user_report("fork failed", count, &count, sp, child);
+        sys_exit(1);
+    }
+    if (child != 0) {
+        user_report("parent", count, &count, sp, child);
+        return; /* EL0 return trampoline invokes exit(0). */
+    }
+
+    user_report("first child", count, &count, sp, 0);
+    count++;
+    child = sys_fork();
+    asm volatile("mov %0, sp" : "=r"(sp));
+    if (child < 0) {
+        user_report("fork failed", count, &count, sp, child);
+        sys_exit(1);
+    }
+    if (child != 0) {
+        user_report("first child", count, &count, sp, child);
+    } else {
+        while (count < 5) {
+            asm volatile("mov %0, sp" : "=r"(sp));
+            user_report("second child", count, &count, sp, 0);
+            /* CPU work without yield; no direct timer-register access. */
+            for (volatile unsigned delay = 0; delay < 1000000; delay++) {
+                asm volatile("nop");
+            }
+            count++;
+        }
+    }
+    sys_exit(0);
+}
+
+static void cmd_fork_test(size_t argc, char *argv[])
+{
+    int id;
+
+    if (argc != 1) {
+        shell_print_usage(shell_find_command(argv[0]));
+        return;
+    }
+    if (thread_current_id() != 0 || thread_count() != 0) {
+        printf("fork_test requires boot and no outstanding threads.\n");
+        return;
+    }
+    if (!thread_start_preemption()) {
+        printf("fork_test: preemption unavailable.\n");
+        return;
+    }
+    id = thread_create_user(user_fork_test);
+    if (id < 0) {
+        printf("fork_test: process creation failed.\n");
+        return;
+    }
+    printf("fork_test: created EL0 process %d\n", id);
+    /* Yield while user threads run and idle reclaims their resources. */
+    while (thread_count() != 0) {
+        schedule();
+    }
+    printf("fork_test: complete, outstanding: %u\n", (uint32_t) thread_count());
 }
 
 static void cmd_mailbox(size_t argc, char *argv[])
@@ -861,9 +952,7 @@ static void cmd_set_timeout(size_t argc, char *argv[])
         return;
     }
     /* Shell input is reused immediately; keep this message alive until delivery. */
-    for (size_t i = 0; i < message_size; i++) {
-        args[i] = message[i];
-    }
+    memcpy(args, message, message_size);
 
     if (timer_add_timeout(TIMER_UNIT_SECONDS, (uint64_t) seconds, false,
                           shell_print_timeout_message, args) < 0) {
@@ -895,9 +984,7 @@ static void cmd_svc(size_t argc, char *argv[])
             continue;
         }
 
-        for (size_t i = 0; i < file.size; i++) {
-            entry[i] = file.data[i];
-        }
+        memcpy(entry, file.data, file.size);
 
         printf("Loaded %s to 0x%08X (%u bytes)\n",
                path,

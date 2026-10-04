@@ -31,10 +31,13 @@ typedef enum {
 
 typedef struct {
     uint64_t regs[31];
-    uint64_t reserved;
+    uint64_t sp_el0;
     uint64_t spsr_el1;
     uint64_t elr_el1;
 } exception_frame_t;
+
+/** Restore a prepared exception frame and enter/resume its context via eret. */
+_Noreturn void exception_return(exception_frame_t *frame);
 
 /*
  * Dispatch an exception after the assembly stub has saved the full frame.

@@ -18,3 +18,16 @@ el_enter_el0:
     msr     elr_el1, x0
     eret
 .size el_enter_el0, . - el_enter_el0
+
+/* Default EL0 return target: returning from a user entry invokes exit(0). */
+.global el0_thread_return
+.type el0_thread_return, %function
+el0_thread_return:
+    mov x0, #0
+    mov x8, #5
+    svc #0
+    b el0_thread_return
+.size el0_thread_return, . - el0_thread_return
+
+/* Linker metadata: this object does not request an executable stack. */
+.section .note.GNU-stack,"",%progbits

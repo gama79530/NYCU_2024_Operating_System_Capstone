@@ -6,6 +6,7 @@
 #include "task_queue.h"
 #include "timer.h"
 #include "thread.h"
+#include "syscall.h"
 
 /* Private types */
 
@@ -59,7 +60,7 @@ static void handle_serror_exception(exception_origin_t origin);
 
 /* Private data */
 
-/* Single-core nesting depth; restore it before switching away from IRQ exit. */
+/* Single-core nesting depth for handlers that must finish before switching. */
 static size_t exception_depth;
 
 /* Function implementations */
@@ -133,13 +134,33 @@ static void dispatch_sync_exception(exception_frame_t *frame, exception_origin_t
 {
     uint64_t esr = read_esr_el1();
     uint64_t ec = (esr >> ESR_EL1_EC_SHIFT) & ESR_EL1_EC_MASK;
+    bool user_context = origin == EXCEPTION_ORIGIN_LOWER_AARCH64 && thread_is_user();
 
     if (ec == ESR_EL1_EC_SVC64) {
-        handle_svc_demo(frame, origin, esr);
+        if (user_context) {
+            /* Syscalls may wait or exit: allow IRQ preemption in thread context. */
+            daif_irq_enable();
+            /* For SVC, ISS (Instruction Specific Syndrome) holds the immediate
+             * in bits [15:0]; bits [24:16] are reserved as zero. Accept svc #0
+             * for our syscall ABI; the syscall number is passed in x8. */
+            if ((esr & ESR_EL1_ISS_MASK) == 0) {
+                syscall_dispatch(frame);
+            } else {
+                frame->regs[0] = (uint64_t) -1;
+            }
+            daif_irq_disable();
+        } else {
+            handle_svc_demo(frame, origin, esr);
+        }
         return;
     }
 
     handle_default_sync_exception(frame, origin, esr);
+    if (user_context) {
+        /* No user-fault recovery yet. Terminate the thread rather than return
+         * to a faulting instruction that may repeatedly raise this exception. */
+        thread_exit();
+    }
 }
 
 static void dispatch_irq_exception(exception_origin_t origin)
@@ -177,7 +198,14 @@ void exception_dispatch(exception_frame_t *frame,
                         exception_origin_t origin,
                         exception_class_t exception_class)
 {
-    exception_depth++;
+    /* User sync handlers run in thread context: syscalls may wait or exit,
+     * and unrecoverable user faults also exit without returning here. */
+    bool track_depth = !(exception_class == EXCEPTION_CLASS_SYNC &&
+                         origin == EXCEPTION_ORIGIN_LOWER_AARCH64 && thread_is_user());
+
+    if (track_depth) {
+        exception_depth++;
+    }
     switch (exception_class) {
     case EXCEPTION_CLASS_SYNC:
         dispatch_sync_exception(frame, origin);
@@ -196,12 +224,16 @@ void exception_dispatch(exception_frame_t *frame,
         break;
     }
     daif_irq_disable();
-    exception_depth--;
-    /* Nested handlers leave requests pending until shared callback state unwinds.
-     * EL0 switching is deferred to the user-process goal. IRQ remains masked
-     * through schedule(); assembly restores this thread's frame with eret. */
+    if (track_depth) {
+        exception_depth--;
+    }
+    /* Nested handlers leave requests pending until the enclosing tracked
+     * handlers finish and shared callback state unwinds.
+     * IRQ remains masked through schedule(); assembly restores this thread's
+     * frame with eret. */
     if (exception_depth == 0 && exception_class == EXCEPTION_CLASS_IRQ &&
-        origin == EXCEPTION_ORIGIN_CURRENT_SPX &&
+        (origin == EXCEPTION_ORIGIN_CURRENT_SPX ||
+         (origin == EXCEPTION_ORIGIN_LOWER_AARCH64 && thread_is_user())) &&
         (frame->spsr_el1 & DAIF_IRQ_MASK) == 0) {
         thread_preempt();
     }
