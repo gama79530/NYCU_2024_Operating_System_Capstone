@@ -17,7 +17,7 @@ ASMFLAGS = -I$(INC_DIR)
 LDFLAGS =
 DEBUG_FLAGS = -g
 
-.PHONY: all symbol-debug clean run qemu qemu-asm debug-qemu gdb readelf
+.PHONY: all symbol-debug clean run qemu qemu-display qemu-asm debug-qemu gdb readelf
 
 all: $(BIN_DIR)/kernel8.img
 
@@ -60,11 +60,15 @@ QEMU ?= qemu-system-aarch64
 QEMU_INITRAMFS = -initrd $(INITRAMFS)
 QEMU_DTB = -dtb $(DTB)
 QEMU_FLAGS_QEMU = -M raspi3b -kernel $(BIN_DIR)/kernel8.img -display none -serial null -serial stdio $(QEMU_INITRAMFS) $(QEMU_DTB)
+QEMU_FLAGS_QEMU_DISPLAY = -M raspi3b -kernel $(BIN_DIR)/kernel8.img -serial null -serial stdio $(QEMU_INITRAMFS) $(QEMU_DTB)
 QEMU_FLAGS_QEMU_ASM = -M raspi3b -kernel $(BIN_DIR)/kernel8.img -display none -d in_asm $(QEMU_INITRAMFS) $(QEMU_DTB)
 QEMU_FLAGS_DEBUG_QEMU = -M raspi3b -kernel $(BIN_DIR)/kernel8.img -serial null -serial stdio -display none -S -s $(QEMU_INITRAMFS) $(QEMU_DTB)
 
 qemu: $(BIN_DIR)/kernel8.img
 	@$(QEMU) $(QEMU_FLAGS_QEMU)
+
+qemu-display: $(BIN_DIR)/kernel8.img
+	@$(QEMU) $(QEMU_FLAGS_QEMU_DISPLAY)
 
 qemu-asm: $(BIN_DIR)/kernel8.img
 	@$(QEMU) $(QEMU_FLAGS_QEMU_ASM)

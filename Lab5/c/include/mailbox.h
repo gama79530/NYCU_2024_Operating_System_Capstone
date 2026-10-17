@@ -12,6 +12,14 @@ typedef enum {
     MAILBOX_ERROR_TAG_RESPONSE = -5,
 } mailbox_error_t;
 
+/** Send a property-channel (8) message and copy the response back into buffer.
+ * Buffer must be 16-byte aligned and contain a complete, bounded tag sequence.
+ * IRQ is masked during the bounded transaction to serialize the response FIFO.
+ * Uses a private 16-byte-aligned copy and memory barriers with the MMU disabled.
+ * Cache maintenance must be added when the buffer becomes cacheable.
+ * A response timeout retains that copy until a later call drains the late reply. */
+mailbox_error_t mailbox_call(unsigned char channel, volatile uint32_t *buffer);
+
 /* Query the board revision through the mailbox property interface. */
 mailbox_error_t mailbox_get_board_revision(uint32_t *revision);
 

@@ -7,26 +7,30 @@
 
 /** Return the current user thread's ID. */
 int sys_getpid(void);
-/** Read bytes into a user-stack buffer; return the byte count or -1. */
+/** Read bytes into a user stack/image buffer; return the byte count or -1. */
 long sys_uart_read(char *buffer, size_t size);
-/** Write a user-stack buffer; return the byte count or -1. */
+/** Write a user stack/image buffer; return the byte count or -1. */
 long sys_uart_write(const char *buffer, size_t size);
-/** Replace the current program; currently unsupported and returns -1. */
+/** Replace the current program from initramfs; return -1 on failure only.
+ * argv is reserved and ignored in Lab5; the new program starts at image byte 0. */
 int sys_exec(const char *name, char *const argv[]);
 /** Fork the current user thread; return child ID, 0 in the child, or -1. */
 int sys_fork(void);
 /** End the current user thread; this call does not return. */
 _Noreturn void sys_exit(int status);
-/** Call the mailbox channel; currently unsupported and returns -1. */
+/** Call property channel 8 with a 16-byte-aligned user stack/image buffer.
+ * Return 1 on success, 0 on mailbox failure, or -1 for an invalid user range/channel. */
 int sys_mbox_call(unsigned char channel, unsigned int *mbox);
-/** Terminate the specified process; currently unsupported and has no effect. */
+/** Terminate a user process; an invalid/protected ID has no effect. */
 void sys_kill(int pid);
 
 /* EL1 exception handler entry. */
 
 /** Dispatch an EL0 svc 0 with IRQ enabled and outside interrupt nesting state.
  * x8 selects the call, x0/x1 carry arguments, and x0 receives the result.
- * exit never returns; unsupported calls and invalid stack buffers return -1. */
+ * exit never returns; successful exec enters the replacement program.
+ * Unsupported calls and invalid user buffers set frame->regs[0] to -1,
+ * which is restored to x0 as the user-visible syscall result. */
 void syscall_dispatch(exception_frame_t *frame);
 
 #endif

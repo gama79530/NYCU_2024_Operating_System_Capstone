@@ -1,7 +1,9 @@
 #include "syscall.h"
 
 #include "mini_uart.h"
+#include "mailbox.h"
 #include "thread.h"
+#include "util.h"
 
 /* Private types */
 
@@ -20,6 +22,8 @@ typedef enum {
 
 /** Pass EL0 syscall arguments and retrieve the result through the register ABI. */
 static long user_syscall(syscall_number_t number, uint64_t arg0, uint64_t arg1);
+/** Check each byte of a user string before reading, including its terminating NUL. */
+static bool user_string_valid(const char *text);
 
 /* Function implementations */
 
@@ -31,6 +35,19 @@ static long user_syscall(syscall_number_t number, uint64_t arg0, uint64_t arg1)
 
     asm volatile("svc #0" : "+r"(x0) : "r"(x1), "r"(x8) : "memory", "cc");
     return (long) x0;
+}
+
+static bool user_string_valid(const char *text)
+{
+    uintptr_t address = (uintptr_t) text;
+
+    while (thread_user_buffer_valid(address, 1)) {
+        if (*(const char *) address == '\0') {
+            return true;
+        }
+        address++;
+    }
+    return false;
 }
 
 int sys_getpid(void)
@@ -114,24 +131,48 @@ void syscall_dispatch(exception_frame_t *frame)
         frame->regs[0] = size;
         break;
     }
-    case SYSCALL_EXEC:
-        /* TODO: Implement program replacement in the process-operations goal. */
-        frame->regs[0] = (uint64_t) -1;
+    case SYSCALL_EXEC: {
+        const char *name = (const char *) frame->regs[0];
+
+        /* Lab5 does not require argv passing. Success rewrites the return frame
+         * to enter the new image; failure leaves the old program intact. */
+        if (!user_string_valid(name) || thread_exec(name, frame) < 0) {
+            frame->regs[0] = (uint64_t) -1;
+        }
         break;
+    }
     case SYSCALL_FORK:
         frame->regs[0] = (uint64_t) thread_fork(frame);
         break;
     case SYSCALL_EXIT:
         /* No wait/status API yet; x0's status is accepted but not retained. */
         thread_exit();
-    case SYSCALL_MBOX_CALL:
-        /* TODO: Implement the user mailbox call in the process-operations goal. */
-        frame->regs[0] = (uint64_t) -1;
+    case SYSCALL_MBOX_CALL: {
+        uintptr_t address = frame->regs[1];
+        uint32_t size;
+
+        /* Property messages carry their byte size in word 0. Validate the size
+         * field before reading it, then validate the entire 16-byte-aligned buffer. */
+        if (frame->regs[0] != 8 || (address & 15) != 0 ||
+            !thread_user_buffer_valid(address, sizeof(size))) {
+            frame->regs[0] = (uint64_t) -1;
+            break;
+        }
+        memcpy(&size, (const void *) address, sizeof(size));
+        if (!thread_user_buffer_valid(address, size)) {
+            frame->regs[0] = (uint64_t) -1;
+            break;
+        }
+        frame->regs[0] = mailbox_call((unsigned char) frame->regs[0],
+                                      (volatile uint32_t *) address) == MAILBOX_SUCCESS;
         break;
-    case SYSCALL_KILL:
-        /* TODO: Implement process termination in the process-operations goal. */
-        frame->regs[0] = (uint64_t) -1;
+    }
+    case SYSCALL_KILL: {
+        int pid = (int32_t) (uint32_t) frame->regs[0];
+
+        frame->regs[0] = thread_kill(pid) ? 0 : (uint64_t) -1;
         break;
+    }
     default:
         frame->regs[0] = (uint64_t) -1;
         break;

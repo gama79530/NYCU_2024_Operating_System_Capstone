@@ -37,6 +37,26 @@ int thread_create(thread_entry_t entry);
  * No image copy; entry must remain executable for the thread and all children. */
 int thread_create_user(thread_entry_t entry);
 
+/** Load a flat, position-independent initramfs image and publish a new EL0 thread.
+ * Entry is the first instruction; all storage (including BSS) must be in the file. */
+int thread_create_program(const char *name);
+
+/** Replace the current user's image/stack context, preserving its PID/kernel stack.
+ * Rewrite the active syscall frame on success; return 0, or -1 without replacement. */
+int thread_exec(const char *name, exception_frame_t *frame);
+
+/** Terminate a user process by ID; boot/idle/kernel threads are protected.
+ * Return false for an invalid ID; successful self-termination does not return. */
+bool thread_kill(int id);
+
+/** Return whether an ID currently belongs to a live thread; zombies are excluded.
+ * This does not retain the thread or prevent subsequent ID reuse. */
+bool thread_is_alive(int id);
+
+/** Terminate all live user threads from kernel thread context.
+ * Boot/idle/kernel threads are preserved; idle reclaims the resulting zombies. */
+void thread_kill_all_users(void);
+
 /** Clone the current user's active stack and syscall frame; return child ID/-1.
  * Supports the lab's stack-only fork model, not general pointer relocation. */
 int thread_fork(exception_frame_t *frame);
@@ -44,7 +64,8 @@ int thread_fork(exception_frame_t *frame);
 /** Return whether the current thread owns an EL0 user context. */
 bool thread_is_user(void);
 
-/** Validate a byte range within the current user's stack (prototype UART buffers). */
+/** Validate a byte range within the current user's stack or loaded image.
+ * This is syscall argument validation, not memory isolation without an MMU. */
 bool thread_user_buffer_valid(uintptr_t address, size_t size);
 
 /* Return the current thread ID (boot: 0, idle: 1), or -1 before initialization. */

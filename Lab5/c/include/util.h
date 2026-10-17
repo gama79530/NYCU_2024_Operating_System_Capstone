@@ -57,6 +57,9 @@ void data_sync_barrier(void);
  * Byte-wise access supports unaligned addresses. Not for memory-mapped I/O. */
 void *memcpy(void *dest, const void *src, size_t size);
 
+/** Synchronize copied instructions with the I-cache before executing them in EL1/EL0. */
+void instruction_cache_sync(uintptr_t begin, size_t size);
+
 /* Busy-wait for approximately cycles loop iterations. */
 void wait_cycles(uint64_t cycles);
 

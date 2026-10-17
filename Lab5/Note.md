@@ -205,7 +205,7 @@ Spec 的 API 說明使用 `exit()`，但測試程式 ABI 使用 `exit(int status
 先使用內建的 `fork_test` 指令，在 EL0 執行 spec 的等價測試，暫不整合外部 user
 image。測試只使用 local variables，透過 `svc 0` 呼叫 getpid、uart_write、fork 與
 exit，印出 parent、child、grandchild 的 PID、counter、local address 與 SP。
-因此提前實作 Goal 4 的最小 fork；exec、mailbox、kill 仍留待後續完成。
+因此提前實作 Goal 4 的最小 fork；其餘 syscall 接著由 Goal 4 補齊。
 
 每個 user thread 有獨立的 allocator-owned kernel/user stack。`thread_create()`、
 `thread_create_user()` 與 `thread_fork()` 都採「配置資源 → 準備 context → 加入
@@ -231,9 +231,10 @@ User 同步 fault 也不計入，因為目前無法修復時會直接結束 thre
 這個雛型沒有 MMU 或完整 memory isolation。Fork 複製使用中的 user stack 與
 trap frame，並將 registers、stack 中落在原 stack 範圍內的值搬到 child 對應位置，
 包含 saved FP chain。它無法分辨同值整數與 pointer，也不處理未對齊或存在其他
-記憶體中的 pointers，不是通用的 POSIX fork。Code/唯讀資料沿用 kernel image
-中的內建測試；UART syscall 暫時只接受目前 user stack 內的 buffer。
-exit 接受 status，但沒有 wait API，暫不保存 status。Unsupported syscall 回傳 -1。
+記憶體中的 pointers，不是通用的 POSIX fork。內建測試的 code/唯讀資料沿用
+kernel image；外部程式則共用 loader 配置的 image。UART syscall 接受目前
+user stack 或 loaded image 內的 buffer。exit 接受 status，但沒有 wait API，
+暫不保存 status。Unsupported syscall 回傳 -1。
 
 ### 已知現象：UART 輸出交錯
 
@@ -259,10 +260,70 @@ exit 接受 status，但沒有 wait API，暫不保存 status。Unsupported sysc
 3. 設定 parent 與 child 的 fork 回傳值，讓兩者都從原本 syscall 之後繼續執行。
 4. 串接 mailbox 服務，完成 kill 與延後回收，避免已終止的 process 再次被排程。
 
-本 Lab 不啟用 MMU，沒有完整的 process memory isolation。不同程式需使用不同
-linker scripts 與載入位址，避免 image 重疊；載入區也不能與 allocator 配置的記憶體
-衝突。Fork 程式依 spec 限制，不應使用 global variables、dynamic allocation 或
-indirect storage 等會造成共享儲存內容衝突的用法。
+### 目前實作
+
+Basic syscall numbers 0–7 已有 handler；signal 的 8、9 留到 Goal 6。
+
+`thread_create_program(name)` 從 initramfs 找出 image，配置新 thread 與 stacks，
+載入 image 並準備初始 frame，最後才發布到 run queue。Kernel shell 的
+`syscall_demo` 使用這個介面固定載入 `syscall.img`，建立新 user process；不接受路徑參數。
+Demo 只允許 boot thread 在沒有其他動態 threads 時啟動，等待初始 user shell
+結束期間主動 yield，不讀 UART。初始 process 結束後，終止仍存活的 user children，
+再等 idle 回收全部資源才返回 kernel shell，避免未先 kill 的影片 children 阻止返回。
+`exit` 本身仍只終止呼叫者；這是 demo 的收尾策略，不另引入 process group。
+初始 process 以 ID 查找是否存活；目前影片 children 不會再 fork，因此初始 shell
+結束後，其 ID 不會在等待收尾期間被重新配發。原有 `svc` 仍是不經 thread lifecycle
+的舊 SVC 診斷入口。
+
+User 的 `sys_exec(name, argv)` 則替換當前 process，保留 PID 與 kernel stack。
+先載入新 image，成功後才重設 user stack 與 active syscall frame；exception 返回
+assembly 的 `eret` 會進入新 entry，不回到原本的 syscall 呼叫點。
+找不到檔案或配置失敗回傳 -1，原程式與 stack 保持可繼續執行。
+本 Lab 不要求 argument passing，因此 `argv` 先保留但不使用。
+
+Loader 使用 allocator 配置 image，entry 固定為檔案的第一條 instruction。
+目前接受 flat、可搬移的 binary，並將 entry 對齊到 4 KiB，保留 `ADRP` 的
+page-relative references。程式不能依賴固定的 absolute load address，也不做
+ELF parsing 或 relocation；BSS/storage 必須已包含在 image 中，或由程式自行
+在其有效範圍內初始化。複製後同步 D-cache 與 I-cache，再允許執行。
+
+Image metadata 保存 reference count。Fork 共用 parent image，獨立複製 stack
+與 frame；parent exec 或退出後，child 仍保有舊 image。最後一個 reference
+釋放時才回收 image。沒有 MMU 或完整 isolation，fork 程式仍依 spec 限制，
+避免 global variables、dynamic allocation 與 indirect storage 的共享內容衝突。
+若要載入依賴固定 link address 的程式，需另行支援保留載入區或 executable
+relocation，不能直接搬到 allocator 任意選出的地址。
+
+`mbox_call` 支援 property channel 8。先確認 user buffer 的 16-byte alignment、
+header 宣告的 byte size 與完整 user range，再檢查 tag lengths/end tag。
+Mailbox 模組使用獨立 16-byte-aligned copy，送出前與回應後保留 memory barriers，
+將 firmware response 複製回原 buffer，成功回傳 1，mailbox 失敗
+回傳 0，無效 user range/channel 回傳 -1。若送出後回應逾時，保留該 copy，
+後續 call 收到遲來回應才釋放，避免 firmware 寫入已回收的記憶體。
+目前 Lab5 維持 MMU 關閉，mailbox 不做 D-cache maintenance；後續 Lab 啟用
+MMU 並將 buffer 設為 cacheable 時，再加入 cache clean/invalidate。
+
+`kill(pid)` 只終止 user process，保護 boot、idle 與 kernel threads。
+目標從 run queue 移除、釋放 ID，加入 zombie queue，交給 idle 回收 image
+reference、user/kernel stacks 與 metadata。Kill 自己直接沿用 `thread_exit()`；
+無效或已結束的 ID 不影響其他 threads。IDs 仍可重用，沒有 generation check。
+
+目前 image 載入/exec replacement 與 bounded mailbox transaction 會暫時 mask
+IRQ。前者避免 kill 中斷尚未發布的配置造成洩漏，後者避免不同 threads 搶走
+彼此的 mailbox FIFO response。這是此版本簡化同步的取捨；較大的 image 或
+mailbox timeout 會延後 timer preemption。UART 等待仍允許 IRQ/preemption，
+輸出交錯維持先記錄、暫不序列化的策略。
+
+### 驗證
+
+使用暫存的外部 EL0 images 在 QEMU 驗證 syscall 0–7，包含 UART image buffer
+與 read、invalid pointers、mailbox revision/invalid tags、exec 失敗與成功、
+PID 保留、fork image 共用、kill 停在 UART read 的 child，以及 self-kill。
+預設與 `-O2` build 各重複三輪，回到 kernel shell 且 buddy 狀態與測試前一致；
+既有 `thread_demo`、`fork_test` 與 `Lab5/user/bin/user.img` 也正常結束。
+Mailbox 的逾時/遲來回應路徑另以模擬 MMIO 驗證：逾時保留單一 allocation，
+未收到回應前不發新 request，收到遲來回應後回收，write timeout 則直接釋放。
+Firmware timeout recovery 尚未在實體 Raspberry Pi 驗證。
 
 Lesson05 的 `copy_process()` 接收外部提供的新 stack，複製 registers 並設定
 child SP，但沒有複製 parent user stack 的內容。因此不能直接用它取代本 Lab
@@ -290,13 +351,27 @@ local counter 的變動不應互相覆蓋，結束後則由其他 context 回收
 
 ### Video Player Demo
 
-
-QEMU 需啟用顯示輸出，實體 Raspberry Pi 需接上 HDMI monitor。目前 makefile 的
-`qemu` target 使用 `-display none`，後續需調整圖形輸出設定；沿用的 SVC demo
-也需換成課程提供的測試程式。
+QEMU 使用 `make -C Lab5/c qemu-display` 開啟顯示視窗，UART 仍在原終端機操作。
+啟動後輸入 `syscall_demo` 執行課程提供的 `syscall.img`；此 target 不暫停 CPU，
+不需要先連線 GDB。原有 `qemu` target 維持 `-display none`。
+實體 Raspberry Pi 需接上 HDMI monitor。
 
 啟動測試程式的 shell 後，輸入 `fork` 建立播放影片的 child。Timer 應持續在
 parent shell 與 child 之間切換，讓使用者能在影片播放時繼續輸入命令。
+
+`timer_init()` 設定 `CNTKCTL_EL1.EL0PCTEN`，允許 EL0 讀取 `CNTFRQ_EL0` 與
+`CNTPCT_EL0` 來計算影片幀間隔，並用 `isb` 同步權限變更；timer 控制仍限於 kernel。
+若缺少這項設定，child 會在 image offset `0x10` 的 `mrs x0, cntfrq_el0` 觸發
+`ESR_EL1 = 0x6230f801`（EC `0x18`，system register access trap）。
+
+QEMU 圖形模式已重複驗證兩輪 `syscall_demo → fork → kill child → exit`。
+每輪擷取三張內容不同的 1024×768 framebuffer，確認畫面持續更新；播放期間
+parent 的 `pid` 仍有回應，kill 後畫面停止更新，exit 返回 kernel shell。
+既有 `fork_test` 與 `thread_demo` 也通過；影片播放尚未在實體 Raspberry Pi 驗證。
+
+另驗證多次 fork 後不先 kill 就直接 exit、自行 kill parent，以及 parent exec
+後再 fork/exit；皆會清理剩餘 children 並返回 kernel shell，framebuffer 停止更新，
+buddy 狀態恢復測試前的數值。一般 `fork_test` 的 child 仍可在 parent 結束後繼續執行。
 
 此項必須流暢執行課程測試程式才能取得分數，只有個別 syscalls 正確並不足夠。
 若成功完成 Video Player，spec 允許省略 Basic Exercise 1 與 2 的測試展示。
@@ -343,3 +418,5 @@ make -C Lab5/c
 - Lab 5 online spec: `https://nycu-caslab.github.io/OSC2024/labs/lab5.html`
 - [raspberry-pi-os lesson04](https://github.com/s-matyukevich/raspberry-pi-os/tree/master/src/lesson04)：kernel threads、context switch 與 timer preemption。
 - [raspberry-pi-os lesson05](https://github.com/s-matyukevich/raspberry-pi-os/tree/master/src/lesson05)：user mode、trap frame、syscall 與 process creation。
+- [Mailbox property interface](https://github.com/raspberrypi/firmware/wiki/Mailbox-property-interface)：channel 8、buffer alignment 與 property tags。
+- [Arm: Implementing clear cache](https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/caches-self-modifying-code-implementing-clear-cache)：複製 instructions 後的 D-cache/I-cache 同步。

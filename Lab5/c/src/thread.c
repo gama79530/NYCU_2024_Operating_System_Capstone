@@ -5,6 +5,7 @@
 #include "config.h"
 #include "daif.h"
 #include "id_pool.h"
+#include "initramfs.h"
 #include "list.h"
 #include "printf.h"
 #include "timer.h"
@@ -25,6 +26,12 @@ typedef enum {
 } thread_state_t;
 
 typedef struct {
+    size_t reference_count; /* Fork shares code/data until the last owner is reaped. */
+    uintptr_t begin;
+    size_t size;
+} user_image_t;
+
+typedef struct {
     cpu_context_t context;
     list_head_t anchor;
     thread_entry_t entry;
@@ -35,6 +42,7 @@ typedef struct {
     uintptr_t user_stack_bottom;
     uintptr_t user_stack_top;
     exception_frame_t *user_frame; /* Initial frame at the kernel stack top. */
+    user_image_t *user_image;
     int id;
     thread_state_t state;
 } thread_t;
@@ -65,6 +73,18 @@ static void thread_discard(thread_t *thread);
 /** Allocate an unpublished thread's user stack and prepare its frame/start context.
  * Requires IRQ masked; safe only before the thread has begun execution. */
 static bool thread_prepare_user(thread_t *thread);
+/** Set a clean EL0 entry frame using an already allocated user stack. */
+static void thread_set_user_frame(thread_t *thread, exception_frame_t *frame,
+                                  thread_entry_t entry);
+/** Find/copy a flat image into a page-aligned allocation; requires IRQ masked.
+ * Page alignment preserves ADRP-relative references; absolute addresses are unsupported. */
+static user_image_t *user_image_load(const char *name);
+/** Drop an image reference and free the allocation when unused; IRQ must be masked. */
+static void user_image_release(user_image_t *image);
+/** Detach a created thread and queue it for idle reclamation; requires IRQ masked. */
+static void thread_terminate(thread_t *thread);
+/** Find the current or a queued live thread by ID with IRQ masked; exclude zombies. */
+static thread_t *thread_find(int id);
 /** Publish a fully prepared thread to the run queue and count it, with IRQ masked. */
 static int thread_publish(thread_t *thread);
 /** Enter a prepared user frame without enabling IRQ on a partial context. */
@@ -104,6 +124,7 @@ static void reap_zombies(void);
 /* Private constants */
 
 #define THREAD_STACK_ALIGNMENT 16UL
+#define USER_IMAGE_ALIGNMENT 4096UL
 
 /* Private data */
 
@@ -253,6 +274,7 @@ static thread_t *thread_alloc(void)
 
 static void thread_discard(thread_t *thread)
 {
+    user_image_release(thread->user_image);
     free(thread->user_stack_allocation);
     free(thread->stack_allocation);
     id_pool_release(thread_ids, thread->id);
@@ -306,6 +328,17 @@ static _Noreturn void thread_user_start(void)
     exception_return(thread_current()->user_frame);
 }
 
+static void thread_set_user_frame(thread_t *thread, exception_frame_t *frame,
+                                  thread_entry_t entry)
+{
+    memzero(frame, sizeof(*frame));
+    thread->entry = entry;
+    frame->elr_el1 = (uintptr_t) entry;
+    frame->sp_el0 = thread->user_stack_top;
+    frame->spsr_el1 = SPSR_EL1_EL0T_DAIF_MASKED & ~SPSR_EL1_MASK_IRQ;
+    frame->regs[30] = (uintptr_t) el0_thread_return;
+}
+
 int thread_create_user(thread_entry_t entry)
 {
     daif_irq_state_t irq = daif_irq_save();
@@ -321,14 +354,92 @@ int thread_create_user(thread_entry_t entry)
         daif_irq_restore(irq);
         return -1;
     }
-    thread->entry = entry;
-    thread->user_frame->elr_el1 = (uintptr_t) entry;
-    thread->user_frame->sp_el0 = thread->user_stack_top;
-    thread->user_frame->spsr_el1 = SPSR_EL1_EL0T_DAIF_MASKED & ~SPSR_EL1_MASK_IRQ;
-    thread->user_frame->regs[30] = (uintptr_t) el0_thread_return;
+    thread_set_user_frame(thread, thread->user_frame, entry);
     id = thread_publish(thread);
     daif_irq_restore(irq);
     return id;
+}
+
+static user_image_t *user_image_load(const char *name)
+{
+    const uint8_t *cursor = initramfs_begin();
+    initramfs_file_t file;
+    user_image_t *image;
+    size_t overhead = sizeof(*image) + USER_IMAGE_ALIGNMENT - 1;
+
+    if (name == NULL || *name == '\0') {
+        return NULL;
+    }
+    while (initramfs_next(&cursor, &file) == INITRAMFS_SUCCESS) {
+        if (!initramfs_path_matches(name, file.name)) {
+            continue;
+        }
+        if (file.size < sizeof(uint32_t) || file.size > SIZE_MAX - overhead) {
+            return NULL;
+        }
+        image = malloc(overhead + file.size);
+        if (image == NULL) {
+            return NULL;
+        }
+        image->reference_count = 1;
+        image->begin = align_up((uintptr_t) (image + 1), USER_IMAGE_ALIGNMENT);
+        image->size = file.size;
+        memcpy((void *) image->begin, file.data, file.size);
+        instruction_cache_sync(image->begin, image->size);
+        return image;
+    }
+    return NULL;
+}
+
+static void user_image_release(user_image_t *image)
+{
+    if (image != NULL && --image->reference_count == 0) {
+        free(image);
+    }
+}
+
+int thread_create_program(const char *name)
+{
+    daif_irq_state_t irq = daif_irq_save();
+    thread_t *thread;
+    int id;
+
+    if (!initialized || name == NULL || (thread = thread_alloc()) == NULL) {
+        daif_irq_restore(irq);
+        return -1;
+    }
+    if (!thread_prepare_user(thread) || (thread->user_image = user_image_load(name)) == NULL) {
+        thread_discard(thread);
+        daif_irq_restore(irq);
+        return -1;
+    }
+    thread_set_user_frame(thread, thread->user_frame, (thread_entry_t) thread->user_image->begin);
+    id = thread_publish(thread);
+    daif_irq_restore(irq);
+    return id;
+}
+
+int thread_exec(const char *name, exception_frame_t *frame)
+{
+    daif_irq_state_t irq = daif_irq_save();
+    thread_t *thread = initialized ? thread_current() : NULL;
+    user_image_t *image;
+    user_image_t *previous;
+
+    /* Keep loading/replacement atomic against kill: an interrupted loader would
+     * otherwise leave an unpublished allocation that idle cannot reclaim. */
+    if (thread == NULL || thread->user_stack_allocation == NULL || frame == NULL ||
+        (image = user_image_load(name)) == NULL) {
+        daif_irq_restore(irq);
+        return -1;
+    }
+    previous = thread->user_image;
+    thread->user_image = image;
+    memzero((void *) thread->user_stack_bottom, thread->user_stack_top - thread->user_stack_bottom);
+    thread_set_user_frame(thread, frame, (thread_entry_t) image->begin);
+    user_image_release(previous);
+    daif_irq_restore(irq);
+    return 0;
 }
 
 bool thread_is_user(void)
@@ -340,9 +451,16 @@ bool thread_user_buffer_valid(uintptr_t address, size_t size)
 {
     thread_t *thread = initialized ? thread_current() : NULL;
 
-    return thread != NULL && thread->user_stack_allocation != NULL &&
-           address >= thread->user_stack_bottom && address <= thread->user_stack_top &&
-           size <= thread->user_stack_top - address;
+    if (thread == NULL || thread->user_stack_allocation == NULL) {
+        return false;
+    }
+    if (address >= thread->user_stack_bottom && address <= thread->user_stack_top &&
+        size <= thread->user_stack_top - address) {
+        return true;
+    }
+    return thread->user_image != NULL && address >= thread->user_image->begin &&
+           address - thread->user_image->begin <= thread->user_image->size &&
+           size <= thread->user_image->size - (address - thread->user_image->begin);
 }
 
 static uint64_t relocate_stack_value(uint64_t value, uintptr_t begin,
@@ -401,6 +519,10 @@ int thread_fork(exception_frame_t *frame)
     child->user_frame->sp_el0 = child_begin;
     child->user_frame->regs[0] = 0;
     child->entry = parent->entry;
+    child->user_image = parent->user_image;
+    if (child->user_image != NULL) {
+        child->user_image->reference_count++;
+    }
     id = thread_publish(child);
     daif_irq_restore(irq);
     return id;
@@ -470,6 +592,83 @@ static _Noreturn void thread_start(void)
     thread_exit();
 }
 
+static void thread_terminate(thread_t *thread)
+{
+    list_remove(&thread->anchor);
+    thread->state = THREAD_DEAD;
+    /* No wait API retains this ID; idle later frees memory by pointer only. */
+    id_pool_release(thread_ids, thread->id);
+    thread->id = -1;
+    list_add_last(&thread->anchor, &zombies);
+}
+
+static thread_t *thread_find(int id)
+{
+    list_head_t *node;
+    thread_t *thread = initialized ? thread_current() : NULL;
+
+    if (thread == NULL || id < 0) {
+        return NULL;
+    }
+    if (thread->id == id && thread->state == THREAD_RUNNABLE) {
+        return thread;
+    }
+    list_for_each(node, &run_queue) {
+        thread = container_of(node, thread_t, anchor);
+        if (thread->id == id) {
+            return thread;
+        }
+    }
+    return NULL;
+}
+
+bool thread_kill(int id)
+{
+    daif_irq_state_t irq = daif_irq_save();
+    thread_t *thread = id >= 2 ? thread_find(id) : NULL;
+
+    if (thread == NULL || thread->user_stack_allocation == NULL) {
+        daif_irq_restore(irq);
+        return false;
+    }
+    if (thread == thread_current()) {
+        thread_exit();
+    }
+    thread_terminate(thread);
+    daif_irq_restore(irq);
+    return true;
+}
+
+bool thread_is_alive(int id)
+{
+    daif_irq_state_t irq = daif_irq_save();
+    bool alive = thread_find(id) != NULL;
+
+    daif_irq_restore(irq);
+    return alive;
+}
+
+void thread_kill_all_users(void)
+{
+    daif_irq_state_t irq = daif_irq_save();
+    thread_t *current = initialized ? thread_current() : NULL;
+    list_head_t *node;
+    list_head_t *next;
+
+    if (current == NULL || current->user_stack_allocation != NULL) {
+        daif_irq_restore(irq);
+        return;
+    }
+    list_for_each_safe(node, next, &run_queue) {
+        thread_t *thread = container_of(node, thread_t, anchor);
+
+        if (thread->user_stack_allocation != NULL) {
+            thread_terminate(thread);
+        }
+    }
+    daif_irq_restore(irq);
+}
+
 _Noreturn void thread_exit(void)
 {
     thread_t *thread;
@@ -482,11 +681,7 @@ _Noreturn void thread_exit(void)
             asm volatile("wfe");
         }
     }
-    thread->state = THREAD_DEAD;
-    /* No wait API retains this ID; idle later frees memory by pointer only. */
-    id_pool_release(thread_ids, thread->id);
-    thread->id = -1;
-    list_add_last(&thread->anchor, &zombies);
+    thread_terminate(thread);
     schedule();
     __builtin_unreachable();
 }
@@ -503,6 +698,7 @@ static void reap_zombies(void)
         }
         thread = container_of(zombies.next, thread_t, anchor);
         list_remove(&thread->anchor);
+        user_image_release(thread->user_image);
         free(thread->user_stack_allocation);
         free(thread->stack_allocation);
         free(thread);

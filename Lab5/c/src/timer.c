@@ -1,6 +1,7 @@
 #include "timer.h"
 
 #include "allocator.h"
+#include "arm_v8.h"
 #include "config.h"
 #include "daif.h"
 #include "id_pool.h"
@@ -26,6 +27,9 @@ static uint64_t read_cntfrq_el0(void);
 
 /** Read the current physical counter value. */
 static uint64_t read_cntpct_el0(void);
+
+/** Configure EL0 counter/timer access and synchronize subsequent instructions. */
+static void write_cntkctl_el1(uint64_t value);
 
 /** Enable or disable the physical timer. */
 static void write_cntp_ctl_el0(uint64_t value);
@@ -79,6 +83,10 @@ bool timer_init(void)
     }
     /* A nonzero frequency also indicates that event ID allocation is ready. */
     counter_frequency = frequency;
+
+    /* The Video Player reads frequency/count at EL0 for frame timing.
+     * Leave EL0 timer controls disabled so only the kernel can reprogram IRQs. */
+    write_cntkctl_el1(CNTKCTL_EL1_EL0PCTEN);
 
     /* Route the EL1 physical non-secure timer IRQ to core 0. */
     put32(CORE0_TIMER_IRQ_CTRL, CORE_TIMER_IRQ_CTRL_CNTPNSIRQ);
@@ -187,6 +195,11 @@ static uint64_t read_cntpct_el0(void)
 
     asm volatile("mrs %0, cntpct_el0" : "=r"(value));
     return value;
+}
+
+static void write_cntkctl_el1(uint64_t value)
+{
+    asm volatile("msr cntkctl_el1, %0\n\tisb" ::"r"(value) : "memory");
 }
 
 static void write_cntp_ctl_el0(uint64_t value)

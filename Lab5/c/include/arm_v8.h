@@ -17,6 +17,12 @@
 #define CNTHCTL_EL2_VALUE           (CNTHCTL_EL2_EL1PCTEN | CNTHCTL_EL2_EL1PCEN)
 
 /*
+ * CNTKCTL_EL1, Counter-timer Kernel Control Register.
+ * EL0PCTEN allows EL0 to read CNTFRQ_EL0 and CNTPCT_EL0, not timer controls.
+ */
+#define CNTKCTL_EL1_EL0PCTEN        (1 << 0)
+
+/*
  * SPSR_EL2, Saved Program Status Register (EL2).
  * M[3:0] = 0101 means returning to EL1h.
  * D/A/I/F mask debug, SError, IRQ and FIQ while entering EL1.

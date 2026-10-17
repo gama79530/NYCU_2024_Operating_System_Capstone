@@ -1,6 +1,8 @@
 #include "mailbox.h"
 
 #include "config.h"
+#include "allocator.h"
+#include "daif.h"
 #include "error.h"
 #include "log.h"
 #include "peripheral.h"
@@ -10,7 +12,7 @@
 
 /* Private function declarations */
 
-/*
+/**
  * Send a mailbox property request and wait for the matching response.
  *
  * The buffer must be 16-byte aligned and addressable through the 32-bit
@@ -18,7 +20,13 @@
  */
 static mailbox_error_t mailbox_property_call(volatile uint32_t *buffer);
 
-/* Validate the first tag response in a property buffer. */
+/** Wait for one matching FIFO response, with a bounded poll and IRQ masked. */
+static mailbox_error_t mailbox_wait_response(uint32_t request);
+
+/** Check property header/tag lengths and require an end tag within the buffer. */
+static bool mailbox_buffer_valid(volatile uint32_t *buffer);
+
+/** Validate the first tag response in a property buffer. */
 static mailbox_error_t mailbox_validate_tag(volatile uint32_t *buffer, uint32_t value_size);
 
 /* Private constants */
@@ -93,6 +101,11 @@ static mailbox_error_t mailbox_validate_tag(volatile uint32_t *buffer, uint32_t 
 /* The current single-core kernel serializes access to this shared buffer. */
 static volatile uint32_t mailbox_buffer[MAILBOX_BUFFER_WORDS] __attribute__((aligned(16)));
 
+/* A timed-out firmware request still owns its buffer. Retain at most one until
+ * its reply is drained by a subsequent call; never reuse memory still used by VC. */
+static void *pending_allocation;
+static uint32_t pending_request;
+
 static const char *const mailbox_error_messages[] = {
     "Invalid argument or mailbox buffer.",
     "Timed out waiting to write mailbox request.",
@@ -106,10 +119,13 @@ static const char *const mailbox_error_messages[] = {
 mailbox_error_t mailbox_get_board_revision(uint32_t *revision)
 {
     mailbox_error_t error;
+    daif_irq_state_t irq;
 
     if (revision == NULL) {
         return MAILBOX_ERROR_INVALID_ARGUMENT;
     }
+
+    irq = daif_irq_save();
 
     mailbox_buffer[0] = 7 * sizeof(uint32_t);
     mailbox_buffer[1] = MAILBOX_REQUEST;
@@ -120,28 +136,34 @@ mailbox_error_t mailbox_get_board_revision(uint32_t *revision)
     mailbox_buffer[6] = MAILBOX_TAG_END;
 
     LOG_VERBOSE("mailbox", "query board revision");
-    error = mailbox_property_call(mailbox_buffer);
+    error = mailbox_call(MAILBOX_CH_PROP, mailbox_buffer);
     if (error != MAILBOX_SUCCESS) {
+        daif_irq_restore(irq);
         return error;
     }
 
     error = mailbox_validate_tag(mailbox_buffer, sizeof(uint32_t));
     if (error != MAILBOX_SUCCESS) {
+        daif_irq_restore(irq);
         return error;
     }
 
     *revision = mailbox_buffer[5];
     LOG_VERBOSE("mailbox", "board revision = 0x%08X", *revision);
+    daif_irq_restore(irq);
     return MAILBOX_SUCCESS;
 }
 
 mailbox_error_t mailbox_get_arm_memory(uint32_t *base, uint32_t *size)
 {
     mailbox_error_t error;
+    daif_irq_state_t irq;
 
     if (base == NULL || size == NULL) {
         return MAILBOX_ERROR_INVALID_ARGUMENT;
     }
+
+    irq = daif_irq_save();
 
     mailbox_buffer[0] = 8 * sizeof(uint32_t);
     mailbox_buffer[1] = MAILBOX_REQUEST;
@@ -153,19 +175,22 @@ mailbox_error_t mailbox_get_arm_memory(uint32_t *base, uint32_t *size)
     mailbox_buffer[7] = MAILBOX_TAG_END;
 
     LOG_VERBOSE("mailbox", "query ARM memory");
-    error = mailbox_property_call(mailbox_buffer);
+    error = mailbox_call(MAILBOX_CH_PROP, mailbox_buffer);
     if (error != MAILBOX_SUCCESS) {
+        daif_irq_restore(irq);
         return error;
     }
 
     error = mailbox_validate_tag(mailbox_buffer, 2 * sizeof(uint32_t));
     if (error != MAILBOX_SUCCESS) {
+        daif_irq_restore(irq);
         return error;
     }
 
     *base = mailbox_buffer[5];
     *size = mailbox_buffer[6];
     LOG_VERBOSE("mailbox", "ARM memory base = 0x%08X, size = 0x%08X", *base, *size);
+    daif_irq_restore(irq);
     return MAILBOX_SUCCESS;
 }
 
@@ -183,6 +208,83 @@ const char *mailbox_error_string(mailbox_error_t error)
     }
 
     return mailbox_error_messages[index];
+}
+
+static bool mailbox_buffer_valid(volatile uint32_t *buffer)
+{
+    size_t words = buffer[0] / sizeof(uint32_t);
+    size_t index = 2;
+
+    if (buffer[0] < 3 * sizeof(uint32_t) || buffer[0] % sizeof(uint32_t) != 0 ||
+        buffer[1] != MAILBOX_REQUEST) {
+        return false;
+    }
+    while (index < words) {
+        size_t value_words;
+
+        if (buffer[index] == MAILBOX_TAG_END) {
+            return true;
+        }
+        if (words - index < 3) {
+            return false;
+        }
+        value_words = ((size_t) buffer[index + 1] + 3) / sizeof(uint32_t);
+        if (value_words > words - index - 3) {
+            return false;
+        }
+        index += 3 + value_words;
+    }
+    return false;
+}
+
+mailbox_error_t mailbox_call(unsigned char channel, volatile uint32_t *buffer)
+{
+    daif_irq_state_t irq = daif_irq_save();
+    mailbox_error_t error;
+    size_t size;
+    void *allocation;
+    volatile uint32_t *request;
+
+    if (channel != MAILBOX_CH_PROP || buffer == NULL || ((uintptr_t) buffer & 15) != 0 ||
+        !mailbox_buffer_valid(buffer)) {
+        daif_irq_restore(irq);
+        return MAILBOX_ERROR_INVALID_ARGUMENT;
+    }
+    if (pending_allocation != NULL) {
+        error = mailbox_wait_response(pending_request);
+        if (error != MAILBOX_SUCCESS) {
+            daif_irq_restore(irq);
+            return error;
+        }
+        free(pending_allocation);
+        pending_allocation = NULL;
+    }
+    size = buffer[0];
+    /* Keep independent storage alive if firmware replies after the caller exits.
+     * malloc guarantees 8-byte alignment; reserve slack for the required 16 bytes. */
+    allocation = malloc(size + 15);
+    if (allocation == NULL) {
+        daif_irq_restore(irq);
+        return MAILBOX_ERROR_INVALID_ARGUMENT;
+    }
+    request = (volatile uint32_t *) align_up((uintptr_t) allocation, 16);
+    memcpy((void *) request, (const void *) buffer, size);
+    data_sync_barrier();
+    error = mailbox_property_call(request);
+    data_sync_barrier();
+    if (error == MAILBOX_SUCCESS && request[1] != MAILBOX_RESPONSE_SUCCESS) {
+        error = MAILBOX_ERROR_RESPONSE;
+    }
+    /* Copy only the originally validated size, including partial error responses. */
+    memcpy((void *) buffer, (const void *) request, size);
+    if (error == MAILBOX_ERROR_READ_TIMEOUT) {
+        pending_allocation = allocation;
+        pending_request = (uint32_t) (uintptr_t) request | MAILBOX_CH_PROP;
+    } else {
+        free(allocation);
+    }
+    daif_irq_restore(irq);
+    return error;
 }
 
 static mailbox_error_t mailbox_property_call(volatile uint32_t *buffer)
@@ -212,6 +314,13 @@ static mailbox_error_t mailbox_property_call(volatile uint32_t *buffer)
     data_memory_barrier();
     put32(MAILBOX_WRITE, request);
 
+    return mailbox_wait_response(request);
+}
+
+static mailbox_error_t mailbox_wait_response(uint32_t request)
+{
+    size_t attempts;
+
     for (attempts = 0; attempts < CONFIG_MAILBOX_TIMEOUT; attempts++) {
         uint32_t response;
 
@@ -225,11 +334,6 @@ static mailbox_error_t mailbox_property_call(volatile uint32_t *buffer)
         }
 
         data_memory_barrier();
-        if (buffer[1] != MAILBOX_RESPONSE_SUCCESS) {
-            LOG_VERBOSE("mailbox", "response code = 0x%08X", buffer[1]);
-            return MAILBOX_ERROR_RESPONSE;
-        }
-
         LOG_VERBOSE("mailbox", "response accepted");
         return MAILBOX_SUCCESS;
     }

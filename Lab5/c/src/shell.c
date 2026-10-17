@@ -134,6 +134,10 @@ static void thread_demo_entry(void);
 /** Launch the embedded EL0 fork test and wait for idle to reclaim its processes. */
 static void cmd_fork_test(size_t argc, char *argv[]);
 
+/** Launch syscall.img; stop remaining children when its initial process exits,
+ * then wait for idle to reclaim all demo processes. */
+static void cmd_syscall_demo(size_t argc, char *argv[]);
+
 /* Print buddy allocator state and free blocks by order. */
 static void cmd_buddy(size_t argc, char *argv[]);
 
@@ -179,6 +183,7 @@ static const command_t commands[] = {
     {"free", "free <address>", "Release a kernel allocation by address", cmd_free},
     {"kmem_demo", "kmem_demo", "Demonstrate dynamic and buddy allocation", cmd_kmem_demo},
     {"fork_test", "fork_test", "Run the spec fork test in EL0", cmd_fork_test},
+    {"syscall_demo", "syscall_demo", "Run syscall.img from initramfs", cmd_syscall_demo},
     {"thread_demo", "thread_demo", "Demonstrate kernel threads and idle reclamation", cmd_thread_demo},
     {"buddy", "buddy", "Print buddy allocator state", cmd_buddy},
     {"dtb", "dtb", "Print devicetree initramfs information", cmd_dtb},
@@ -958,6 +963,36 @@ static void cmd_set_timeout(size_t argc, char *argv[])
                           shell_print_timeout_message, args) < 0) {
         free(args);
         printf("Timer error: failed to add timeout.\n");
+    }
+}
+
+static void cmd_syscall_demo(size_t argc, char *argv[])
+{
+    int id;
+
+    if (argc != 1) {
+        shell_print_usage(shell_find_command(argv[0]));
+        return;
+    }
+    /* This demo owns all user processes, including descendants left on exit. */
+    if (thread_current_id() != 0 || thread_count() != 0) {
+        printf("syscall_demo requires boot and no outstanding threads.\n");
+        return;
+    }
+    id = thread_create_program("syscall.img");
+    if (id < 0) {
+        printf("syscall_demo: failed to load syscall.img\n");
+        return;
+    }
+    /* Leave UART input to the user shell until its initial process exits.
+     * Video children do not fork, so the exited shell's ID cannot be reused here. */
+    while (thread_is_alive(id)) {
+        schedule();
+    }
+    thread_kill_all_users();
+    /* Idle owns reclamation, including the initial process and stopped children. */
+    while (thread_count() != 0) {
+        schedule();
     }
 }
 
