@@ -10,6 +10,7 @@ INC_DIR = include
 BIN_DIR = bin
 ROOTFS_DIR = rootfs
 INITRAMFS = $(BIN_DIR)/initramfs.cpio
+DTB = $(BIN_DIR)/bcm2710-rpi-3-b.dtb
 
 CFLAGS = -Wall -Wextra -nostdlib -nostartfiles -ffreestanding -mgeneral-regs-only -I$(INC_DIR)
 ASMFLAGS = -I$(INC_DIR)
@@ -18,7 +19,7 @@ DEBUG_FLAGS = -g
 
 .PHONY: all symbol-debug clean qemu debug-qemu gdb elf-header program-header initramfs
 
-all: $(BIN_DIR)/kernel8.img $(INITRAMFS)
+all: $(BIN_DIR)/kernel8.img $(INITRAMFS) $(DTB)
 
 symbol-debug:
 	@$(MAKE) -s clean
@@ -50,6 +51,10 @@ initramfs: $(INITRAMFS)
 $(INITRAMFS): $(shell find $(ROOTFS_DIR) -type f 2>/dev/null)
 	@mkdir -p $(@D)
 	cd $(ROOTFS_DIR) && find . | cpio -o -H newc > ../$@
+
+$(DTB):
+	@mkdir -p $(@D)
+	cp bcm2710-rpi-3-b.dtb $@
 
 clean:
 	rm -rf $(BUILD_DIR) $(BIN_DIR)

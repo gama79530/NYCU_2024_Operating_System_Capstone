@@ -19,6 +19,7 @@ $(BUILD_DIR)/user.img: linker.ld main.S
 	$(OBJCOPY) $(BUILD_DIR)/user.elf -O binary $(BUILD_DIR)/user.img
 
 deploy: $(BUILD_DIR)/user.img
+	mkdir -p $(ROOTFS_DIR)
 	cp $(BUILD_DIR)/user.img $(ROOTFS_DIR)/user.img
 
 clean:
