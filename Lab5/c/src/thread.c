@@ -32,6 +32,19 @@ typedef struct {
 } user_image_t;
 
 typedef struct {
+    exception_frame_t saved_frame; /* Kernel-owned context, never supplied by EL0. */
+    void *stack_allocation;
+    uintptr_t stack_bottom;
+    uintptr_t stack_top;
+} signal_context_t;
+
+typedef struct {
+    uintptr_t begin;
+    uintptr_t end;
+    uintptr_t child_begin;
+} user_stack_copy_t;
+
+typedef struct {
     cpu_context_t context;
     list_head_t anchor;
     thread_entry_t entry;
@@ -43,6 +56,9 @@ typedef struct {
     uintptr_t user_stack_top;
     exception_frame_t *user_frame; /* Initial frame at the kernel stack top. */
     user_image_t *user_image;
+    signal_handler_t signal_handlers[CONFIG_SIGNAL_COUNT];
+    uint64_t pending_signal_bmap; /* Repeated pending instances of one signal coalesce. */
+    signal_context_t *signal_context; /* Non-NULL while a handler is active. */
     int id;
     thread_state_t state;
 } thread_t;
@@ -66,6 +82,8 @@ _Static_assert(offsetof(exception_frame_t, spsr_el1) == 256, "SPSR assembly offs
 
 /** EL0 trampoline that invokes exit when the user entry returns. */
 extern void el0_thread_return(void);
+/** EL0 trampoline that invokes sigreturn after a signal handler returns. */
+extern void el0_signal_return(void);
 /** Allocate metadata, ID and kernel stack with IRQ masked; do not enqueue. */
 static thread_t *thread_alloc(void);
 /** Release an unpublished thread's allocations and ID with IRQ masked. */
@@ -89,9 +107,25 @@ static thread_t *thread_find(int id);
 static int thread_publish(thread_t *thread);
 /** Enter a prepared user frame without enabling IRQ on a partial context. */
 static _Noreturn void thread_user_start(void);
-/** Translate a value within the copied stack range to the child's stack. */
-static uint64_t relocate_stack_value(uint64_t value, uintptr_t begin,
-                                     uintptr_t end, uintptr_t child_begin);
+/** Allocate a separate handler stack and save its interrupted frame with IRQ masked. */
+static signal_context_t *signal_context_create(const exception_frame_t *frame);
+/** Free an optional signal context and its stack with IRQ masked. */
+static void signal_context_free(signal_context_t *context);
+/** Accept an aligned instruction in the loaded image or embedded test code. */
+static bool thread_handler_valid(const thread_t *thread, signal_handler_t handler);
+/** Copy one used stack range, checking bounds and ABI alignment. */
+static bool copy_user_stack(uintptr_t bottom, uintptr_t top, uintptr_t sp,
+                            uintptr_t child_bottom, uintptr_t child_top,
+                            user_stack_copy_t *copy);
+/** Rebase one stack-range value without cascading between different ranges. */
+static uint64_t relocate_stack_value(uint64_t value, const user_stack_copy_t *copies,
+                                     size_t count);
+/** Rebase general registers and SP using the copied normal/handler stack ranges. */
+static void relocate_user_frame(exception_frame_t *frame, const user_stack_copy_t *copies,
+                                size_t count);
+/** Clone normal context and, when active, the handler stack and saved context. */
+static bool thread_clone_user_context(thread_t *child, const thread_t *parent,
+                                      const exception_frame_t *frame);
 
 /** Save prev's CPU context and restore next's context with IRQ masked. */
 extern void switch_to(thread_t *prev, thread_t *next);
@@ -141,6 +175,8 @@ static bool preemption_started;
 
 extern char kernel_stack_bottom;
 extern char kernel_stack_top;
+extern char kernel_begin;
+extern char kernel_text_end;
 
 /* Function implementations */
 
@@ -274,6 +310,7 @@ static thread_t *thread_alloc(void)
 
 static void thread_discard(thread_t *thread)
 {
+    signal_context_free(thread->signal_context);
     user_image_release(thread->user_image);
     free(thread->user_stack_allocation);
     free(thread->stack_allocation);
@@ -435,6 +472,11 @@ int thread_exec(const char *name, exception_frame_t *frame)
     }
     previous = thread->user_image;
     thread->user_image = image;
+    /* Handler addresses and a suspended pre-handler context belong to the old image. */
+    signal_context_free(thread->signal_context);
+    thread->signal_context = NULL;
+    thread->pending_signal_bmap = 0;
+    memzero(thread->signal_handlers, sizeof(thread->signal_handlers));
     memzero((void *) thread->user_stack_bottom, thread->user_stack_top - thread->user_stack_bottom);
     thread_set_user_frame(thread, frame, (thread_entry_t) image->begin);
     user_image_release(previous);
@@ -458,15 +500,237 @@ bool thread_user_buffer_valid(uintptr_t address, size_t size)
         size <= thread->user_stack_top - address) {
         return true;
     }
-    return thread->user_image != NULL && address >= thread->user_image->begin &&
-           address - thread->user_image->begin <= thread->user_image->size &&
-           size <= thread->user_image->size - (address - thread->user_image->begin);
+    if (thread->signal_context != NULL && address >= thread->signal_context->stack_bottom &&
+        address <= thread->signal_context->stack_top &&
+        size <= thread->signal_context->stack_top - address) {
+        return true;
+    }
+    if (thread->user_image != NULL && address >= thread->user_image->begin &&
+        address - thread->user_image->begin <= thread->user_image->size &&
+        size <= thread->user_image->size - (address - thread->user_image->begin)) {
+        return true;
+    }
+
+    return false;
 }
 
-static uint64_t relocate_stack_value(uint64_t value, uintptr_t begin,
-                                     uintptr_t end, uintptr_t child_begin)
+static signal_context_t *signal_context_create(const exception_frame_t *frame)
 {
-    return value >= begin && value <= end ? child_begin + (value - begin) : value;
+    signal_context_t *context = malloc(sizeof(*context));
+    uintptr_t begin;
+
+    if (context == NULL) {
+        return NULL;
+    }
+    context->stack_allocation = malloc(CONFIG_SIGNAL_STACK_SIZE);
+    if (context->stack_allocation == NULL) {
+        free(context);
+        return NULL;
+    }
+    begin = (uintptr_t) context->stack_allocation;
+    context->stack_bottom = align_up(begin, THREAD_STACK_ALIGNMENT);
+    context->stack_top = align_down(begin + CONFIG_SIGNAL_STACK_SIZE, THREAD_STACK_ALIGNMENT);
+    memcpy(&context->saved_frame, frame, sizeof(*frame));
+    return context;
+}
+
+static void signal_context_free(signal_context_t *context)
+{
+    if (context != NULL) {
+        free(context->stack_allocation);
+        free(context);
+    }
+}
+
+static bool thread_handler_valid(const thread_t *thread, signal_handler_t handler)
+{
+    uintptr_t address = (uintptr_t) handler;
+    uintptr_t begin = (uintptr_t) &kernel_begin;
+    uintptr_t end = (uintptr_t) &kernel_text_end;
+
+    if (thread->user_image != NULL) {
+        begin = thread->user_image->begin;
+        end = begin + thread->user_image->size;
+    }
+    /* Leave room for the first complete 4-byte AArch64 instruction.
+     * Kernel text and loaded images contain at least one instruction, so end >= 4. */
+    return handler == NULL || ((address & 3) == 0 && address >= begin &&
+                                address <= end - sizeof(uint32_t));
+}
+
+int thread_signal_register(int signal, signal_handler_t handler)
+{
+    daif_irq_state_t irq = daif_irq_save();
+    thread_t *thread = initialized ? thread_current() : NULL;
+
+    if (thread == NULL || thread->user_stack_allocation == NULL ||
+        signal <= 0 || signal >= CONFIG_SIGNAL_COUNT || !thread_handler_valid(thread, handler)) {
+        daif_irq_restore(irq);
+        return -1;
+    }
+    thread->signal_handlers[signal] = handler;
+    daif_irq_restore(irq);
+    return 0;
+}
+
+int thread_signal_send(int id, int signal)
+{
+    daif_irq_state_t irq = daif_irq_save();
+    thread_t *thread = id >= 2 ? thread_find(id) : NULL;
+
+    if (thread == NULL || thread->user_stack_allocation == NULL ||
+        signal <= 0 || signal >= CONFIG_SIGNAL_COUNT) {
+        daif_irq_restore(irq);
+        return -1;
+    }
+    if (signal == SIGKILL && thread->signal_handlers[signal] == NULL) {
+        /* The default action must also stop a thread blocked inside a syscall. */
+        if (thread == thread_current()) {
+            thread_exit();
+        }
+        thread_terminate(thread);
+    } else {
+        thread->pending_signal_bmap |= 1ULL << signal;
+    }
+    daif_irq_restore(irq);
+    return 0;
+}
+
+void thread_signal_deliver(exception_frame_t *frame)
+{
+    thread_t *thread;
+
+    if ((frame->spsr_el1 & SPSR_EL1_MODE_MASK) != SPSR_EL1_MODE_EL0T || !thread_is_user()) {
+        return;
+    }
+    thread = thread_current();
+    if (thread->signal_context != NULL || thread->pending_signal_bmap == 0) {
+        return;
+    }
+    for (int signal = 1; signal < CONFIG_SIGNAL_COUNT; signal++) {
+        signal_handler_t handler;
+
+        if ((thread->pending_signal_bmap & (1ULL << signal)) == 0) {
+            continue;
+        }
+        thread->pending_signal_bmap &= ~(1ULL << signal);
+        handler = thread->signal_handlers[signal];
+        if (handler == NULL) {
+            if (signal == SIGKILL) {
+                thread_exit();
+            }
+            /* Other unregistered signals have no default action in this lab. */
+            continue;
+        }
+        thread->signal_context = signal_context_create(frame);
+        if (thread->signal_context == NULL) {
+            /* A handler cannot safely run without its stack and saved context. */
+            thread_exit();
+        }
+        frame->elr_el1 = (uintptr_t) handler;
+        frame->sp_el0 = thread->signal_context->stack_top;
+        frame->regs[0] = (uint64_t) signal;
+        frame->regs[29] = 0; /* Start a new frame-pointer chain on the handler stack. */
+        frame->regs[30] = (uintptr_t) el0_signal_return;
+        return;
+    }
+}
+
+int thread_signal_return(exception_frame_t *frame)
+{
+    daif_irq_state_t irq = daif_irq_save();
+    thread_t *thread = initialized ? thread_current() : NULL;
+    signal_context_t *context = thread != NULL ? thread->signal_context : NULL;
+
+    if (context == NULL || frame == NULL) {
+        daif_irq_restore(irq);
+        return -1;
+    }
+    memcpy(frame, &context->saved_frame, sizeof(*frame));
+    thread->signal_context = NULL;
+    signal_context_free(context);
+    daif_irq_restore(irq);
+    return 0;
+}
+
+static bool copy_user_stack(uintptr_t bottom, uintptr_t top, uintptr_t sp,
+                            uintptr_t child_bottom, uintptr_t child_top,
+                            user_stack_copy_t *copy)
+{
+    size_t used;
+
+    if (sp < bottom || sp > top || (sp & (THREAD_STACK_ALIGNMENT - 1)) != 0) {
+        return false;
+    }
+    used = top - sp;
+    if (used > child_top - child_bottom) {
+        return false;
+    }
+    copy->begin = sp;
+    copy->end = top;
+    copy->child_begin = child_top - used;
+    memcpy((void *) copy->child_begin, (const void *) sp, used);
+    return true;
+}
+
+static uint64_t relocate_stack_value(uint64_t value, const user_stack_copy_t *copies,
+                                     size_t count)
+{
+    for (size_t i = 0; i < count; i++) {
+        if (value >= copies[i].begin && value <= copies[i].end) {
+            return copies[i].child_begin + (value - copies[i].begin);
+        }
+    }
+    return value;
+}
+
+static void relocate_user_frame(exception_frame_t *frame, const user_stack_copy_t *copies,
+                                size_t count)
+{
+    for (size_t i = 0; i < 31; i++) {
+        frame->regs[i] = relocate_stack_value(frame->regs[i], copies, count);
+    }
+    frame->sp_el0 = relocate_stack_value(frame->sp_el0, copies, count);
+}
+
+static bool thread_clone_user_context(thread_t *child, const thread_t *parent,
+                                      const exception_frame_t *frame)
+{
+    const signal_context_t *context = parent->signal_context;
+    uintptr_t normal_sp = context != NULL ? context->saved_frame.sp_el0 : frame->sp_el0;
+    user_stack_copy_t copies[2];
+    size_t count = 1;
+
+    if (!copy_user_stack(parent->user_stack_bottom, parent->user_stack_top, normal_sp,
+                         child->user_stack_bottom, child->user_stack_top, &copies[0])) {
+        return false;
+    }
+    if (context != NULL) {
+        child->signal_context = signal_context_create(&context->saved_frame);
+        if (child->signal_context == NULL ||
+            !copy_user_stack(context->stack_bottom, context->stack_top, frame->sp_el0,
+                             child->signal_context->stack_bottom,
+                             child->signal_context->stack_top, &copies[1])) {
+            return false;
+        }
+        count++;
+    }
+    /* No MMU: stack-range words are treated as pointers, including saved FP chains.
+     * This cannot distinguish integers from pointers or find unaligned pointers. */
+    for (size_t stack = 0; stack < count; stack++) {
+        size_t words = (copies[stack].end - copies[stack].begin) / sizeof(uint64_t);
+
+        for (size_t i = 0; i < words; i++) {
+            uint64_t *word = &((uint64_t *) copies[stack].child_begin)[i];
+            *word = relocate_stack_value(*word, copies, count);
+        }
+    }
+    memcpy(child->user_frame, frame, sizeof(*frame));
+    relocate_user_frame(child->user_frame, copies, count);
+    if (child->signal_context != NULL) {
+        relocate_user_frame(&child->signal_context->saved_frame, copies, count);
+    }
+    return true;
 }
 
 int thread_fork(exception_frame_t *frame)
@@ -474,14 +738,9 @@ int thread_fork(exception_frame_t *frame)
     daif_irq_state_t irq = daif_irq_save();
     thread_t *parent = initialized ? thread_current() : NULL;
     thread_t *child;
-    uintptr_t begin;
-    uintptr_t child_begin;
-    size_t used;
     int id;
 
-    if (parent == NULL || parent->user_stack_allocation == NULL || frame == NULL ||
-        frame->sp_el0 < parent->user_stack_bottom || frame->sp_el0 > parent->user_stack_top ||
-        (frame->sp_el0 & (THREAD_STACK_ALIGNMENT - 1)) != 0) {
+    if (parent == NULL || parent->user_stack_allocation == NULL || frame == NULL) {
         daif_irq_restore(irq);
         return -1;
     }
@@ -490,35 +749,14 @@ int thread_fork(exception_frame_t *frame)
         daif_irq_restore(irq);
         return -1;
     }
-    if (!thread_prepare_user(child)) {
+    if (!thread_prepare_user(child) || !thread_clone_user_context(child, parent, frame)) {
         thread_discard(child);
         daif_irq_restore(irq);
         return -1;
     }
-    begin = frame->sp_el0;
-    used = parent->user_stack_top - begin;
-    if (used > child->user_stack_top - child->user_stack_bottom) {
-        thread_discard(child);
-        daif_irq_restore(irq);
-        return -1;
-    }
-    child_begin = child->user_stack_top - used;
-    memcpy((void *) child_begin, (const void *) begin, used);
-    memcpy(child->user_frame, frame, sizeof(*frame));
-    /* No MMU: lab stack-only relocation treats stack-range words as pointers.
-     * This includes saved FP chains, but cannot distinguish an integer with the
-     * same value or find unaligned pointers. It is not a general POSIX fork. */
-    for (size_t i = 0; i < used / sizeof(uint64_t); i++) {
-        uint64_t *word = &((uint64_t *) child_begin)[i];
-        *word = relocate_stack_value(*word, begin, parent->user_stack_top, child_begin);
-    }
-    for (size_t i = 0; i < 31; i++) {
-        child->user_frame->regs[i] = relocate_stack_value(frame->regs[i], begin,
-                                                         parent->user_stack_top, child_begin);
-    }
-    child->user_frame->sp_el0 = child_begin;
     child->user_frame->regs[0] = 0;
     child->entry = parent->entry;
+    memcpy(child->signal_handlers, parent->signal_handlers, sizeof(child->signal_handlers));
     child->user_image = parent->user_image;
     if (child->user_image != NULL) {
         child->user_image->reference_count++;
@@ -698,6 +936,7 @@ static void reap_zombies(void)
         }
         thread = container_of(zombies.next, thread_t, anchor);
         list_remove(&thread->anchor);
+        signal_context_free(thread->signal_context);
         user_image_release(thread->user_image);
         free(thread->user_stack_allocation);
         free(thread->stack_allocation);

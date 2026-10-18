@@ -18,6 +18,7 @@ SECTIONS
     . = kernel_begin;
     .text.boot : ALIGN(0x10) {KEEP(*(.text.boot))}    :text   /* Early boot code */
     .text      : ALIGN(0x10) {*(.text .text.*)}       :text   /* kernel main code */
+    PROVIDE(kernel_text_end = .);
     .rodata    : ALIGN(0x10) {*(.rodata .rodata.*)}   :rodata /* Read-only data */
     .data      : ALIGN(0x10) {*(.data .data.*)}       :data   /* Initialized data */
     . = ALIGN(0x10);

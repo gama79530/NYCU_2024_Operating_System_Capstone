@@ -43,6 +43,7 @@
  * M[3:0] = 0000 means returning to EL0t.
  */
 #define SPSR_EL1_MODE_EL0T          (0b0000)
+#define SPSR_EL1_MODE_MASK          0xf
 #define SPSR_EL1_MASK_FIQ           (1 << 6)
 #define SPSR_EL1_MASK_IRQ           (1 << 7)
 #define SPSR_EL1_MASK_SERROR        (1 << 8)

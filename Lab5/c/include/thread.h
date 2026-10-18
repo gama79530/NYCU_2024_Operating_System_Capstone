@@ -15,6 +15,7 @@
 
 #include "types.h"
 #include "exception.h"
+#include "signal.h"
 
 typedef void (*thread_entry_t)(void);
 
@@ -56,6 +57,19 @@ bool thread_is_alive(int id);
 /** Terminate all live user threads from kernel thread context.
  * Boot/idle/kernel threads are preserved; idle reclaims the resulting zombies. */
 void thread_kill_all_users(void);
+
+/** Register a handler in the current user's executable image; NULL selects default. */
+int thread_signal_register(int signal, signal_handler_t handler);
+
+/** Queue a signal; unhandled SIGKILL terminates immediately, even during a syscall. */
+int thread_signal_send(int id, int signal);
+
+/** Prepare one pending handler on return to EL0; requires IRQ masked.
+ * Called by the common exception restore path, including initial user entry. */
+void thread_signal_deliver(exception_frame_t *frame);
+
+/** Restore the kernel-saved user context and free the handler stack; return 0/-1. */
+int thread_signal_return(exception_frame_t *frame);
 
 /** Clone the current user's active stack and syscall frame; return child ID/-1.
  * Supports the lab's stack-only fork model, not general pointer relocation. */

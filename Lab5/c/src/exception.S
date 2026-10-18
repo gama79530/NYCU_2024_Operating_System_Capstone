@@ -139,6 +139,11 @@ exception_return:
 
 // Restore exception_frame_t and return to the interrupted context.
 restore_exception_frame:
+    /* The final return point also covers first entry/fork and syscall returns.
+     * IRQ is masked; only an EL0 frame can be redirected to a signal handler. */
+    mov     x0, sp
+    bl      thread_signal_deliver
+
     ldp     x0, x1, [sp, #EXCEPTION_FRAME_SPSR_EL1_ELR_EL1]
     msr     elr_el1, x1
     msr     spsr_el1, x0

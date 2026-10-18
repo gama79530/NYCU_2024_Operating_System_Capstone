@@ -2,6 +2,7 @@
 #define LAB5_C_SYSCALL_H
 
 #include "exception.h"
+#include "signal.h"
 
 /* EL0 wrappers: enter the kernel through svc #0; do not call from EL1. */
 
@@ -23,6 +24,12 @@ _Noreturn void sys_exit(int status);
 int sys_mbox_call(unsigned char channel, unsigned int *mbox);
 /** Terminate a user process; an invalid/protected ID has no effect. */
 void sys_kill(int pid);
+/** Register a user handler, or NULL for the default action; return 0 or -1. */
+int sys_sigregister(int signal, signal_handler_t handler);
+/** Send a signal to a user process; return 0 or -1 for an invalid target/signal. */
+int sys_sigsend(int pid, int signal);
+/** Restore the interrupted context; return -1 only if no signal handler is active. */
+int sys_sigreturn(void);
 
 /* EL1 exception handler entry. */
 

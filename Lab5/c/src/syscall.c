@@ -16,6 +16,9 @@ typedef enum {
     SYSCALL_EXIT = 5,
     SYSCALL_MBOX_CALL = 6,
     SYSCALL_KILL = 7,
+    SYSCALL_SIGNAL = 8,
+    SYSCALL_SIGNAL_KILL = 9,
+    SYSCALL_SIGRETURN = 10,
 } syscall_number_t;
 
 /* Private function declarations */
@@ -93,8 +96,24 @@ void sys_kill(int pid)
     user_syscall(SYSCALL_KILL, (uint64_t) pid, 0);
 }
 
+int sys_sigregister(int signal, signal_handler_t handler)
+{
+    return (int) user_syscall(SYSCALL_SIGNAL, (uint64_t) signal, (uintptr_t) handler);
+}
+
+int sys_sigsend(int pid, int signal)
+{
+    return (int) user_syscall(SYSCALL_SIGNAL_KILL, (uint64_t) pid, (uint64_t) signal);
+}
+
+int sys_sigreturn(void)
+{
+    return (int) user_syscall(SYSCALL_SIGRETURN, 0, 0);
+}
+
 void syscall_dispatch(exception_frame_t *frame)
 {
+    /* Signed int arguments use the low 32 bits of each argument register. */
     switch (frame->regs[8]) {
     case SYSCALL_GETPID:
         frame->regs[0] = thread_current_id();
@@ -168,11 +187,25 @@ void syscall_dispatch(exception_frame_t *frame)
         break;
     }
     case SYSCALL_KILL: {
-        int pid = (int32_t) (uint32_t) frame->regs[0];
+        int pid = (int32_t) frame->regs[0];
 
         frame->regs[0] = thread_kill(pid) ? 0 : (uint64_t) -1;
         break;
     }
+    case SYSCALL_SIGNAL:
+        frame->regs[0] = (uint64_t) thread_signal_register(
+            (int32_t) frame->regs[0], (signal_handler_t) frame->regs[1]);
+        break;
+    case SYSCALL_SIGNAL_KILL:
+        frame->regs[0] = (uint64_t) thread_signal_send(
+            (int32_t) frame->regs[0], (int32_t) frame->regs[1]);
+        break;
+    case SYSCALL_SIGRETURN:
+        /* Success restores every saved register, including the interrupted x0. */
+        if (thread_signal_return(frame) < 0) {
+            frame->regs[0] = (uint64_t) -1;
+        }
+        break;
     default:
         frame->regs[0] = (uint64_t) -1;
         break;

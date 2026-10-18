@@ -29,5 +29,14 @@ el0_thread_return:
     b el0_thread_return
 .size el0_thread_return, . - el0_thread_return
 
+/* A user signal handler returns here; syscall 10 restores its interrupted frame. */
+.global el0_signal_return
+.type el0_signal_return, %function
+el0_signal_return:
+    mov x8, #10
+    svc #0
+    b el0_signal_return
+.size el0_signal_return, . - el0_signal_return
+
 /* Linker metadata: this object does not request an executable stack. */
 .section .note.GNU-stack,"",%progbits

@@ -262,7 +262,7 @@ user stack 或 loaded image 內的 buffer。exit 接受 status，但沒有 wait 
 
 ### 目前實作
 
-Basic syscall numbers 0–7 已有 handler；signal 的 8、9 留到 Goal 6。
+Basic syscall numbers 0–7 已有 handler；signal 的 8、9 與 sigreturn 的 10 見 Goal 6。
 
 `thread_create_program(name)` 從 initramfs 找出 image，配置新 thread 與 stacks，
 載入 image 並準備初始 frame，最後才發布到 run queue。Kernel shell 的
@@ -388,7 +388,7 @@ user-registered handler 則必須在 EL0 執行。
 | --- | --- |
 | `signal(int SIGNAL, void (*handler)())` | Number 8，註冊目前 process 的 user handler |
 | `kill(int pid, int SIGNAL)` | Number 9，對指定 process 傳送 signal |
-| `sigreturn()` | Handler 結束後還原原始 user context，number 由實作自行定義 |
+| `sigreturn()` | Number 10，handler 結束後還原原始 user context |
 | `SIGKILL = 9` | Default action 為終止目標 process |
 
 建議實作步驟：
@@ -405,6 +405,69 @@ user-registered handler 則必須在 EL0 執行。
 使用課程測試程式的 `register` 註冊 handler，再使用 `signal_kill {tid}` 驗證
 signal 功能。需確認 handler 在 EL0 執行，返回後原本程式仍能正常繼續。
 若只通過自行撰寫的 testcase，此項依 spec 最多取得一半分數。
+
+### 目前實作
+
+`sys_sigregister(signum, handler)`、`sys_sigsend(pid, signum)` 與 `sys_sigreturn()`
+分別包裝 syscall 8、9、10；原有 syscall 7 的 `sys_kill(pid)` 仍可直接終止 process。
+註冊與傳送成功回傳 0，無效 signal、PID 或 handler 回傳 -1；沒有 active handler
+時呼叫 sigreturn 也回傳 -1。NULL handler 表示恢復 default action。
+
+`CONFIG_SIGNAL_COUNT` 預設為 32，支援 1–31。沿用 POSIX 將 0 保留給
+`kill(pid, 0)` 的目標/權限查詢語意，不將其當成一般 signal；目前 Lab 尚未實作
+此查詢，傳入 0 仍回傳 -1。每個 thread 保存
+handler table、pending bitmap 與可選的 active signal context，同號 pending signal
+合併成一個。未註冊的 SIGKILL 在 kernel 直接終止目標，即使目標卡在 UART read
+也有效；其他未註冊的 signals 暫時忽略。依本 Lab 與課程程式要求，signal 9 可以
+被註冊的 user handler 覆寫，這點不同於一般 POSIX 的不可攔截 SIGKILL。
+
+所有 exception restore（包含初次進入 EL0 與 fork child）在還原 registers 前，
+統一呼叫 `thread_signal_deliver()`。只處理即將返回 EL0 的 frame，EL1/nested IRQ
+返回不插入 handler。Registered signal 若在 syscall 執行期間抵達，會等到該
+syscall 返回 EL0 才執行，不中斷或重啟 blocking syscall。
+
+Delivery 在 IRQ masked 時保存完整 frame 到 kernel-owned signal context，另外
+用 allocator 配置 `CONFIG_SIGNAL_STACK_SIZE`（預設同 user stack，15 KiB），將
+PC 改為 handler、SP 改為新 stack、LR 指向 `el0_signal_return`；x0 也帶上 signum，
+但 spec 的 `void handler(void)` 可以不使用它。Handler 在 EL0 執行，可呼叫 syscall
+並被 timer 搶佔；UART 等 buffer 檢查也接受 active handler stack。
+
+Handler 返回後，trampoline 發出 sigreturn。Kernel 從自己保存的 frame 還原
+x0–x30、SP、PC 與 SPSR，並釋放 handler stack/context；不把 syscall 的回傳值
+覆蓋到剛還原的 x0。Active handler 執行期間不再進入下一個 registered handler，
+新的 signal 保留 pending，等 sigreturn 完成後再處理。配置 context/stack 失敗時
+直接終止接收者，避免以不完整狀態執行 handler。
+
+Fork 複製 registered handlers，但不繼承 pending bitmap。若在 handler 內 fork，
+也複製 active handler stack、原本的 normal stack 與 saved frame，沿用既有的
+stack-range relocation，讓 parent/child 都能各自 sigreturn。成功 exec 清除舊的
+handlers、pending 與 active context；exit、kill 與 demo 收尾則由 idle 一併回收。
+Handler entry 要求 instruction alignment 且位於 loaded image（內建測試則是
+kernel text）；沒有 MMU，這仍不是完整的 memory isolation 或通用 POSIX signal。
+
+### Signal Demo 與驗證
+
+```text
+$ syscall_demo
+# fork
+# signal_kill <child_pid>
+# register
+# fork
+# signal_kill <new_child_pid>
+# kill <new_child_pid>
+# exit
+```
+
+第一次 signal_kill 使用 default action 終止 child；register 後建立的 child
+繼承 handler，會印出課程訊息，等待後返回繼續播放。若希望直接終止這個 child，
+使用原有的 kill。Parent 退出時 demo 仍會清理剩餘 children。
+
+已使用原始課程 binary 在 QEMU 圖形模式驗證 default action、fork inheritance、
+handler 中的 syscall/preemption、重複 delivery、sigreturn 後影片繼續更新，以及
+直接 kill active handler 的回收；QMP registers 也確認 handler 在 EL0t 執行。
+另以暫存的外部測試 images（`-O0`/`-O2`）驗證完整 context/NZCV 還原、獨立 stack、
+pending 合併與不巢狀、無效參數、handler 內 fork/exec/exit，重複執行後 buddy
+狀態一致。實體 Raspberry Pi 的 signal 功能尚未驗證。
 
 ## Build
 
