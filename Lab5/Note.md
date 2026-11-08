@@ -320,7 +320,7 @@ mailbox timeout 會延後 timer preemption。UART 等待仍允許 IRQ/preemption
 與 read、invalid pointers、mailbox revision/invalid tags、exec 失敗與成功、
 PID 保留、fork image 共用、kill 停在 UART read 的 child，以及 self-kill。
 預設與 `-O2` build 各重複三輪，回到 kernel shell 且 buddy 狀態與測試前一致；
-既有 `thread_demo`、`fork_test` 與 `Lab5/user/bin/user.img` 也正常結束。
+既有 `thread_demo` 與 `fork_test` 也正常結束。
 Mailbox 的逾時/遲來回應路徑另以模擬 MMIO 驗證：逾時保留單一 allocation，
 未收到回應前不發新 request，收到遲來回應後回收，write timeout 則直接釋放。
 Firmware timeout recovery 尚未在實體 Raspberry Pi 驗證。
