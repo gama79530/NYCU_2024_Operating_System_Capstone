@@ -33,6 +33,35 @@ Raspberry Pi 3, developed and tested with both QEMU and real hardware.
 - Code that crosses the C and assembly boundary must preserve the required
   AArch64 calling convention and stack alignment.
 
+## C Source File Organization
+
+All `.c` files must organize their contents using the following exact section
+headings, in this order. Keep every heading even when its section is empty.
+Place `#include` directives before these sections.
+
+```c
+/***** Private constants *****/
+
+/***** Private types *****/
+
+/***** Private data *****/
+
+/***** Private function declarations *****/
+
+/***** Function implementations *****/
+```
+
+- **Private constants:** File-local constants and macro definitions.
+- **Private types:** File-local type definitions, including structs, enums,
+  unions, and typedefs.
+- **Private data:** File-local variables and other mutable state.
+- **Private function declarations:** Forward declarations of file-local
+  (`static`) functions.
+- **Function implementations:** All function definitions, both public and
+  file-local.
+
+Apply this organization when creating or modifying any `.c` file.
+
 ## Commit Message Format
 
 Use Conventional Commits with a concise imperative summary:
